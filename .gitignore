@@ -1,0 +1,13 @@
+core.*
+*.swo
+*.db
+*.log.*
+*.swp
+.nfs*
+*.pyo
+*.pyc
+.project
+.pydevproject
+*.log
+.settings
+/.metadata/*

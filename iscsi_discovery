@@ -1,0 +1,350 @@
+#!/bin/bash
+#
+# Copyright (C) Voltaire Ltd. 2006.  ALL RIGHTS RESERVED.
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation; either version 2 of the License, or (at your option) any later
+# version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, write to the Free Software Foundation, Inc., 59 Temple
+# Place, Suite 330, Boston, MA 02111-1307 USA
+#
+# Author: Dan Bar Dov <danb@voltaire.com>
+
+# iscsi_discovery:
+#    * does a send-targets discovery to the given IP
+#    * set the transport type to ISER
+#    * tries to login
+#    * if succeeds,
+#          o logout,
+#          o mark record autmatic
+#    * else
+#          o reset transport type to TCP
+#          o try to login
+#          o if succeeded
+#                + logout
+#                + mark record automatic
+#
+
+usage()
+{
+	echo "Usage: $0 <IP> [-p <port>] [-v] [-t <tcp|iser> [-f]] [-m] [-l] [-c]"
+	echo "Options:"
+	echo -e "-p\tset the port number (default: 3260)."
+	echo -e "-t\tset trasnpot (default: tcp)."
+	echo -e "-f\tforce the transport specified by -t argument,"
+	echo -e "  \tby disabling fallback to tcp (default: fallback enabled)."
+	echo -e "-m\tset manual startup (default: automatic startup)."
+	echo -e "-l\tstay logged in to the new discovered nodes (default: logout)."
+	echo -e "-c\tclean stale targets (previosly discovered but not reported now);"
+	echo -e "  \tnote that only targets from the specified ip are cleaned."
+	echo -e "-v\tverbose printouts."
+}
+
+dbg()
+{
+	$verbose && echo "portal $portal, target $target : $@"
+}
+
+msg()
+{
+	if [ $verbose = true ]; then
+		dbg $@
+	else
+		echo $@
+	fi
+}
+
+initialize()
+{
+	trap "exit" 2
+	verbose=false
+	force="0"
+	log_out="1"
+	clean_stale=false
+	startup_manual="0"
+	#set default transport to tcp
+	req_transport=tcp
+	transport=tcp
+	#set default port to 3260
+	port=3260;
+}
+
+parse_cmdline()
+{
+
+	# check if the IP address is valid
+	ip=`echo $1 | awk -F'.' '$1 != "" && $1 <=255 && $2 != "" && $2 <= 255 && $3 != "" && $3 <= 255 && $4 != "" && $4 <= 255 {print $0}'`
+	if [ -z "$ip" ]; then
+		echo "$1 is not a vaild IP address!"
+		exit 1
+	fi
+	shift
+	while getopts "t:p:vfmlc" options; do
+	 case $options in
+		t ) req_transport=$OPTARG;;
+		p ) port=$OPTARG;;
+		v ) verbose=true;;
+		f ) force="1";;
+		m ) startup_manual="1";;
+		l ) log_out=0;;
+		c ) clean_stale=true;;
+		\? ) usage
+			exit 1;;
+		* )  usage
+			exit 1;;
+	 esac
+	done
+}
+
+find_in_tgt_arr()
+{
+	local el=$1
+	local i
+
+	for (( i=0; i<${#cur_tgt_arr[*]}; i++ )); do
+		if [ "${cur_tgt_arr[$i]}" = "$el" ]; then
+			return $i
+		fi
+	done
+	return 255
+}
+
+clean_stale_targets()
+{
+	local i
+	local ret
+
+        for (( i=0; i<${#cur_tgt_arr[*]}; i++ )); do
+                if [ -n "${cur_tgt_arr[$i]}" ]; then
+                        echo -e "\n*** portal ${ip}:${port}, target ${cur_tgt_arr[$i]} : delete stale target"
+			iscsiadm -m node --target "${cur_tgt_arr[$i]}" --portal "${ip}:${port}" --op delete
+			ret=$?
+		        if [ ${ret} -ne 0 ]; then
+		                echo -e "failed to delete target"
+		        fi
+                fi
+        done
+}
+
+discover()
+{
+	# If open-iscsi is already logged in to the portal, exit
+	if [ $(iscsiadm -m session 2>&1 | grep -c ${ip}:${port}) -ne 0 ]; then
+		echo "Please logout from all targets on ${ip}:${port} before trying to run discovery on that portal"
+		exit 2
+	fi
+
+	connected=0
+	disconnected=0
+	discovered=0
+	df=/tmp/discovered.$$
+
+	cur_tgt_list=`iscsiadm -m node | grep ${ip}:${port} | awk '{print $2}'`
+	cur_tgt_arr=( $cur_tgt_list )
+
+	echo -e "*** starting sendtargets discovery to $ip"
+	# the grep is for rhel>=6 which loads iscsid on demand
+	iscsiadm -m discoverydb --op=new --op=delete --type sendtargets --portal ${ip}:${port} --discover | grep -v "^Starting" > ${df}
+	
+	discovered=$(cat ${df} | wc -l)
+	if [ ${discovered} = 0 ]; then
+		echo "failed to discover targets at ${ip}"
+		exit 2
+	else
+		echo "discovered ${discovered} target(s) at ${ip}"
+	fi
+
+	while read portal target
+	do
+		portal=${portal%,*}
+		echo -e "\n*** portal $portal, target $target"
+
+		find_in_tgt_arr $target
+		ind=$?
+		if [ $ind -ge 0 ] && [ $ind -lt 255 ]; then
+			dbg "previously discovered target"
+			cur_tgt_arr[$ind]=
+		fi
+
+		select_transport $req_transport
+	done < ${df}
+
+	/bin/rm -f ${df}
+
+	echo -e "\n*** logged in to ${connected} target(s) at ${ip}"
+	echo -e "*** logged out from ${disconnected} target(s) at ${ip}"
+
+	if [ $clean_stale ]; then
+		clean_stale_targets
+	fi
+}
+
+update_target()
+{
+	local ret 
+
+	dbg "update $1 = $2"
+	iscsiadm -m node --targetname ${target} --portal ${portal} --op update -n $1 -v $2
+	ret=$?
+	if [ ${ret} -ne 0 ]; then
+		msg "failed to update $1 = $2"
+		exit 1
+	fi
+}
+
+do_login()
+{
+	local ret
+
+	msg "start login over $transport"
+	if [ $verbose == true ]; then
+		iscsiadm -m node --targetname ${target} --portal ${portal} --login # show output
+	else
+	        iscsiadm -m node --targetname ${target} --portal ${portal} --login >/dev/null 2>&1
+	fi
+	ret=$?
+	if [ ${ret} = 0 ]; then
+		session_exists=`iscsiadm -m session | grep ${transport} | grep ${target}`
+		if [ -n "${session_exists}" ]; then
+			msg "login over $transport ok"
+		else
+			msg "login over $transport failed"
+			ret=255
+		fi
+	else
+		msg "login over $transport failed"
+	fi
+	return $ret
+}
+
+do_logout()
+{
+	local ret
+
+	msg "logout"
+	if [ $verbose = true ]; then
+		iscsiadm -m node --targetname ${target} --portal ${portal} --logout # show output
+	else
+	        iscsiadm -m node --targetname ${target} --portal ${portal} --logout >/dev/null 2>&1
+	fi
+	ret=$?
+	if [ ${ret} = 0 ]; then
+		((disconnected++))
+		dbg "logout ok"
+	else
+		msg "logout failed"
+	fi
+	return $ret
+}
+
+try_login()
+{
+	local ret
+
+	if [ "$startup_manual" != "1" ]; then
+		update_target "node.startup" "automatic"
+		update_target "node.conn[0].startup" "automatic"
+	else
+		update_target "node.startup" "manual"
+		update_target "node.conn[0].startup" "manual"
+	fi
+	
+	do_login
+	ret=$?
+	if [ ${ret} = 0 ]; then
+		((connected++))
+		if [ "$log_out" = "1" ]; then
+			do_logout
+		fi
+	fi
+	return ${ret}
+}
+
+set_transport()
+{
+	transport=$1
+	if [ "$transport" == "iser" ];then
+		update_target "node.conn[0].iscsi.HeaderDigest" "None"
+	fi
+	transport_name=`iscsiadm  -m node -p ${portal} -T ${target} |awk '/transport_name/ {print $1}'`
+	update_target "${transport_name}" "${transport}"	
+}
+
+select_transport()
+{
+	local ret
+
+	set_transport $1
+	dbg "testing login over $transport"
+	try_login
+	ret=$?	
+	if [ $ret = 0 ]; then
+		if [ "$startup_manual" != "1" ]; then
+			msg "set automatic login over ${transport}"
+		else
+			msg "set manual login over ${transport}"
+		fi
+	else
+		if [ $transport != "tcp" -a "$force" = "0" ]; then
+			select_transport tcp
+		else
+			# all attempts failed, if automatic login implied, set manual
+			if [ "$startup_manual" != "1" ]; then
+				update_target "node.startup" "manual"
+				update_target "node.conn[0].startup" "manual"
+				msg "set manual login (over $transport) after failure"
+			fi
+		fi
+	fi
+}
+
+check_os() {
+	local dis rel v
+	if [ -f /etc/redhat-release ]; then
+		dis="el"
+		rel=`cat /etc/redhat-release | sed -e 's/.*release //g' -e 's/ (.*//g' | tr '[A-Z]' '[a-z]'`
+	fi
+	v=`echo "$rel >= 6" | bc`
+	if [ "$dis" == "el" ] && [ "$v" == "1" ]; then
+		return 1
+	fi
+
+	return 0
+}
+
+check_iscsid()
+{
+	check_os
+	if [ "$?" == 1 ]; then
+		return
+	fi
+
+	local ret
+
+	#check if iscsid is running
+	pidof iscsid &>/dev/null
+	ret=$?
+	if [ $ret -ne 0 ]; then
+		echo "iscsid is not running"
+		echo "Exiting..."
+		exit 1
+	fi
+}
+
+if [ $# -lt 1 ]; then
+	usage
+	exit 1
+fi
+
+check_iscsid
+initialize
+parse_cmdline "$@"
+discover

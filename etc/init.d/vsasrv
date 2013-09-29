@@ -1,0 +1,132 @@
+#!/bin/bash
+#
+# vsasrv        Startup script for vsasrv
+#
+# chkconfig: 345 86 15
+# description: vsasrv service script
+#
+### BEGIN INIT INFO
+# Provides:             vsasrv
+# Required-Start:       $network
+# Short-Description:    vsasrv service script
+# Description:          vsasrv service script
+# Required-Stop:        $network
+# Default-Start:        3 4 5
+# Default-Stop:         0 1 2 6
+### END INIT INFO
+#
+
+test -f /etc/rc.d/init.d/functions && . /etc/rc.d/init.d/functions
+test -f /etc/rc.status && . /etc/rc.status
+
+prog="VSA server"
+bin="vsasrv"
+log="/opt/vsa/files/log/vsasrv.console.log"
+
+start_vsasrv="/opt/vsa/$bin start >> $log 2>&1"
+stop_vsasrv="/opt/vsa/$bin stop"
+status_vsasrv="/opt/vsa/$bin status"
+
+load="/usr/sbin/vscli --load >> $log 2>&1"
+lockfile=/var/lock/subsys/vsasrv
+
+vsa_err() {
+	ERR_TWISTED=3
+	ERR_HA_SLAVE=11
+	ERR_HA_TRANSITION=12
+	ERR_COMPUTE_NODE=13
+	ERR_LOADPVD=15
+	ERR_LOADPVD_LO=17
+
+	case "$RETVAL" in
+	1) echo -n "already running" ;;
+	$ERR_TWISTED) echo -n "failed to load twisted" ;;
+	$ERR_HA_SLAVE) echo -n "standby node" ;;
+	$ERR_HA_TRANSITION) echo -n "in transition" ;;
+	$ERR_COMPUTE_NODE) echo -n "compute node" ;;
+	$ERR_LOADPVD) echo "load provider problem, check hostname" ;;
+	$ERR_LOADPVD_LO) echo "cannot use loopback interface" ;;
+	esac
+}
+
+start_and_load() {
+	if [ -f /etc/rc.status ]; then
+		eval "$start_vsasrv"
+		RETVAL=$?
+	else
+		eval "$start_vsasrv"
+		RETVAL=$?
+	fi
+	if [ "$RETVAL" == 0 ]; then
+		sleep 2
+		eval "$load"
+	else
+		vsa_err
+	fi
+	if [ -f /etc/rc.status ]; then
+		test $RETVAL -gt 0 && _rc_status=1 || rc_status=0
+		rc_status -v
+	fi
+	return $RETVAL
+}
+
+start() {
+	if [ -f /etc/rc.status ]; then
+		echo -n "Starting $prog: "
+		start_and_load
+	else
+		action $"Starting $prog: " start_and_load
+	fi
+	[ "$RETVAL" = 0 ] && touch $lockfile
+}
+
+stop() {
+	echo "Stopping $prog"
+	eval "$stop_vsasrv"
+	RETVAL=0
+	[ "$RETVAL" = 0 ] && rm -f $lockfile
+	if [ -f /etc/rc.status ]; then
+		rc_status -v
+	fi
+}
+
+restartq() {
+	echo "Restarting $prog"
+	stop > /dev/null
+	start > /dev/null
+}
+
+status() {
+	eval "$status_vsasrv"
+	RETVAL=$?
+	if [ "$RETVAL" == 0 ] ; then
+		echo "$prog is running..."
+	else
+		echo "$prog is not running"
+	fi
+}
+
+# See how we were called.
+case "$1" in
+  start)
+    start
+    ;;
+  restart)
+    stop
+    start
+    ;;
+  restartq)
+    restartq
+    ;;
+  stop)
+    stop
+    ;;
+  status)
+    status
+    ;;
+  *)
+    echo $"Usage: $0 {start|stop|status|restart|restartq}"
+    ;;
+esac
+
+exit $RETVAL

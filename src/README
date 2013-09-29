@@ -1,0 +1,713 @@
+                         Mellanox Storage Accelerator (VSA)
+                        ===================================
+
+                   Quick Installation Guide and Product Overview
+                                  Version 2.1.0
+                                  August 18th, 2011
+
+===============================================================================
+Table of Contents
+===============================================================================
+1. Overview
+   1.1 VSA Product Introduction
+   1.2 Contents
+   1.3 Supported Platforms and Hardware
+   1.4 New Features in VSA Version 2.1
+2. Installation
+   2.1 Installing and Running VSA
+   2.2 Uninstalling VSA
+   2.3 Installed Utilities and Services
+3. VSA Configuration and Usage 
+   3.1 VSCLI Overview
+   3.2 VSCLI Commands
+   3.3 VSCLI Managed Objects
+4. Initiator (Linux) Configuration
+   4.1 Initiator Installation
+   4.2 Initiator Configuration
+   4.3 Initiator - Known Issues
+5. Linux TGT Target
+6. Notes and Known/Fixed Issues
+
+===============================================================================
+1. Overview
+===============================================================================
+
+1.1 VSA Product Introduction
+----------------------------
+
+Mellanox Storage Accelerator (VSA) is a software package to enable high-speed
+remote block storage access. InfiniBand (IB) and Ethernet-based initiators 
+(clients) can access storage in a VSA-based appliance, or in storage area 
+networks (SAN) connected to VSA, through high speed iSCSI and iSCSI-RDMA (iSER) 
+block storage protocols.
+
+VSA discovers storage resources in the VSA-enabled storage server platform,
+or fibre channel (FC) storage attached to it. Use VSA to configure
+user/client access to each storage element or LUN (logical user number), 
+and to monitor the system or the storage traffic - bandwidth, latency, IOPS 
+(input/output operations per second), and so on.
+
+You can manage VSA by using VSCLI (VSA Command Line Utility), or by using the VSA GUI.  
+VSCLI can be invoked locally or can be accessed through SSH by remote login
+to "vsadmin" (VSA admin) or "vsuser" (VSA unprivileged user) accounts. 
+The default password for vsadmin and vsuser is "123456".
+
+You can manage multiple VSA-enabled devices from a single console using VSCLI. 
+
+For more information on VSA, contact your Mellanox representative. 
+
+
+1.2 Contents
+------------
+
+The VSA package is provided as a tarball containing the following files:
+
+README.txt      	- this file 
+install.sh      	- installation script
+uninstall.sh    	- uninstall script 
+common			- helper script used by both install.sh and uninstall.sh
+iscsi_discovery		- helper script for initiators to discover targets
+global_common_for_ssd.conf - DRBD configuration file optimized for SSD
+
+and the following software RPM packages:
+
+scsi-target-utils     - the VSA target 
+vsacli                - the VSA management suite
+vsacli-ha             - the VSA High Availability suite
+
+perl-Config-General   - pre-requisite for scsi-target-utils (on RHEL)
+python-twisted	      - event-based framework for Internet applications
+drbd		      - distributed replicated block device
+flashcache	      - general purpose block device cache
+heartbeat	      - high-availability subsystem for Linux-HA
+
+VSA is dependent on the following RPMs as prerequisites
+
+sg3_utils	- SCSI Generic utils, required by VSA management
+sg3_utils-libs	- libraries needed for the utils (on RHEL)
+mdadm		- create, manage, and monitor Linux MD (software RAID) devices
+device-mapper	- user-space files and tools for the device-mapper
+lvm2		- managing physical volumes and creating logical volumes
+
+Before installing VSA, ensure that the following prerequisite packages 
+are installed: python, net-snmp-libs, sg3_utils, lvm2, device-mapper, mdadm, 
+librdmacm, libibverbs, libmlx4. All these packages are present in EL based 
+Linux distributions DVD/ISO.
+
+
+1.3 Supported Platforms and Hardware
+------------------------------------
+
+VSA requires an x86-64 based server platform 
+and is installed on top of a standard Linux distribution.
+
+Supported and tested Linux distributions are:
+- RedHat EL 5.4, 5.5, 5.6, 6.0, 6.1
+- OEL (Oracle Linux) 5.4, 5.5, 5.6
+- CentOS 5.4, 5.5, 5.6
+Other distributions may be supported on request. 
+
+Minimum hardware requirements:
+- Single CPU socket, with 2 or more CPU cores in total   
+  (for high IOPS, a minimum of 2 CPU sockets and 4 cores is recommended)
+- 4 GB RAM
+- InfiniBand Adapter: Mellanox ConnectX
+- Ethernet Adapter: any standard NIC, 10GbE is preferred 
+- 1 GB of available storage space 
+- FC Adapter: Qlogic 4-GB or 8-GB PCIe adapters 
+
+Supported Disks for target:
+- SAS/SATA RAID controllers
+- RAM storage (mapped to tmpfs or ramfs)
+- SSD (Solid State Disks) / Flash Disks, PCIe based e.g Fusion-IO
+- FC Attached storage, e.g Qlogic 4/8Gb FC Adapters (with NPIV support)
+
+
+1.4 New Features in VSA Version 2.1
+------------------------------------------
+
+The following new features are provided in this release:
+
+1.4.1 Support for RoCE-based solution
+1.4.2 Replicated cache for caching in FC gateway deployment
+1.4.3 Support for newer RHEL distributions
+1.4.4 Support for more RAID types
+1.4.5 Support for spare devices for RAIDs
+1.4.6 Support for RAID recovery (not for DR RAIDs)
+1.4.7 Support for striping in pools
+1.4.8 Support for extending and reducing logical volume size
+
+1.4.1 Support for RoCE-based solution
+
+VSA now supports RDMA over converged Ethernet. No additional
+configuration is required for this feature.
+
+1.4.2 Replicated cache for caching in FC gateway deployment
+
+VSA now supports setting cache over FC gateway. Configuration is the
+same as for setting cache for DAS.
+
+1.4.3 Support for newer RHEL distributions
+
+Support added for RHEL 6.0 and 6.1 distributions.
+
+1.4.4 Support for more RAID types
+
+Support added for RAID levels 5, 6, 10 and linear.
+
+1.4.5 Support for spare devices for RAIDs
+
+You can now configure spare devices for redundancy in case of failure.
+For example, adding a RAID level 1 with one spare device: 
+	add raids r1 raid=1,devices=d1;d2;d4,spare=1
+
+1.4.6 Support for RAID recovery (not for DR RAIDs)
+
+You can now configure RAID recovery by replacing a disk in case of a disk failure.
+For example, replacing sdb with a different disk:
+	set raids/r1/slaves/sdb/device d2
+
+* This feature is not available for DR RAIDs.
+
+1.4.7 Support for striping in pools
+
+You can now set the number of stripes and stripe size when configuring logical volumes.
+Example:
+	add pools/p1/volumes size=100,stripes=2,stripesize=8
+
+1.4.8 Support for extending and reducing logical volume size
+
+It is possible to extend and reduce a logical volume size.
+For example, extending a logical volume size:
+	set pools/p1/volumes/vol1/size +5g
+
+
+2. Installation
+===============================================================================
+
+2.1 Installing and Running VSA
+------------------------------
+
+NOTE: Before installing VSA, ensure that SE Linux is disabled.
+
+The VSA.tgz archive file contains another file install.vsa-<x.x.x.x>.tgz
+to be used for Linux distributions such as RedHat, OEL or CentOS.
+
+Copy the file, install.vsa-<x.x.x.x>.tgz, to a location on the target 
+system. If you copied install.vsa-<x.x.x.x>.tgz to directory /root, 
+type the following commands:
+
+  cd /root
+  tar -xzvf install.vsa-<x.x.x.x>.tgz
+  cd release.vsa-<x.x.x.x>
+  ./install.sh
+
+The ./install.sh script installs the package content, creates default VSA users, 
+and configures/initializes the VSA services to start upon reboot.
+
+To view installation options, type: ./install.sh -h
+
+Usage: ./install.sh [options]
+
+	-h	this help message
+	-f	force installation
+	-a	install HA packages
+
+The installation adds 3 users: vsadmin, vsuser, vsfiles, who can all log in 
+using remote shell (SSH).
+vsadmin is the privileged user (access to all features).
+vsuser is the non-privileged user w/o access to configuration commands.
+vsfiles has limited remote sftp access to VSA log and configuration files. 
+
+
+2.1.1 Installing and Running VSA Cluster
+----------------------------------------
+
+It is recommended to read the section on VSA Clustering in the VSA User Manual
+before doing the cluster install. 
+
+VSA cluster is made from at least two providers (nodes), one acting as the master
+and the other as the standby. Cluster installation is done in two steps, first, 
+regular installation of VSA on each of them, using the "-a" (HA packages) option. 
+Next, on the master node, a directory change to /opt/vsa/ha_config is needed, 
+from where the HA install is done by invocation of the ./config_ha.sh script.
+
+The input to the script is made of the master and standby host names, the parent 
+network interfaces for the virtual configuration and data IPs, along with the 
+virtual IPs and their subnet prefixes.
+
+Usage:
+	./config_ha.sh -m master -s standby -c <iface>,<virtual-ip/prefix> -d <iface>,<virtual-ip/prefix>
+
+Options:
+ -m : Master node host
+ -s : Standby node host
+ -c : Config interface and virtual config ip with prefix
+ -d : Data interface and virtual data ip with prefix
+      Config and Data virtual IPs addresses are migrated between master and standby upon failover
+ -h : Show help
+
+Example: a command of the form
+
+	./config_ha.sh -m alice -s bob -c eth0,172.30.49.230/16 -d ib0,192.168.20.230/24
+
+Fits a setup with the master provider host name being alice, the standby bob,
+the configuration parent interface being eth0, data parent interface ib0, the
+virtual configuration IP/mask being 172.30.49.230/16 and the virtual data IP/mask
+192.168.20.230/24 . During the runtime of this script, the user is required to 
+provide the root password for both nodes, which is required for configuring for copy, 
+installation and configuration of the Linux-HA / HeartBeat package and service on 
+both nodes.
+
+2.2 Uninstalling VSA
+--------------------
+
+To uninstall the VSA package, browse to the installation directory and run 
+uninstall. 
+
+Example:
+  cd /root/release.vsa-<x.x.x.x>
+  ./uninstall.sh
+
+The uninstall script removes the VSA RPMs and deletes
+the default users: vsadmin, vsuser, and vsfiles.
+
+2.3 Installed Utilities and Services
+------------------------------------
+
+/opt/vsa			- VSA utilities directory
+/etc/init.d/isertgtd		- VSA accelerated SCSI Target service
+/etc/init.d/vsad		- VSA daemon (local agent) service
+/etc/init.d/vsasrv		- VSA server (resource manager) service
+/etc/init.d/vsam		- VSA monitor service
+/usr/sbin/vsamon		- VSA monitor
+/usr/sbin/vscli			- VSA admin command line shell
+/usr/sbin/vscliuser		- VSA user command line shell
+/opt/vsa/vsauser		- Utility to add new VSA shell users
+/opt/vsa/vsa.conf		- configuration file for aspects related to
+			          clustering, target instances/threads etc.
+/usr/sbin/vsa			- script to stop/start and observe the status
+			          of various VSA related services
+
+Note: The vsa script is a helper tool to enable easy management of the 
+different VSA services and initating VSA cluster management operations.
+
+To view the different options, type: vsa --help
+
+Usage: ./vsacli/sbin/vsa <option>
+Options:
+	start		- start all VSA services
+	stop		- stop all VSA services
+	restart		- restart all VSA services
+	status		- print status for all VSA services
+	version		- print VSA package version
+	cl-status	- print cluster status
+	takeover	- HA takeover
+	standby		- HA standby
+
+===============================================================================
+3. VSA Configuration and Usage
+===============================================================================
+
+3.1 VSCLI overview
+------------------
+
+VSCLI is the main VSA configuration utility and command line. 
+VSCLI is a context-aware CLI with 2 privilege levels (admin & user). 
+You can run VSCLI locally at the Linux prompt (by typing "vscli"),
+or you can access VSCLI using remote SSH (from the vsadmin/vsuser accounts)
+e.g. ssh vsadmin@10.10.10.1.
+
+VSA has the following main objects/categories:
+- Storage resources (physical/logical disks, volumes, raid)
+- Servers/Server groups (clients/initiators accessing VSA)
+- Targets/LUNs (storage target objects coupling storage resources and mapping 
+   them to initiators/server)
+- Systems/Providers (managed VSA appliances/gateways and their configuration) 
+- FC ports (FC SAN ports and attached resources attached to VSA appliances)
+
+
+3.2 VSCLI commands 
+------------------
+
+General syntax:  command <object/path> <parameters> <options>
+Parameters and options depend on the command and object type.
+
+For command-specific help, type: help <command>
+For a list of object types with short descriptions, type: help objects
+For help about a specific object type (targets, LUNs, servers, etc.),
+type: help class <object-type>
+
+General Commands
+        config  - Enter configuration mode and/or change default path.
+        exit    - Exit sub-menu.
+        help, ? - Show this help. Use help <command> to show specific help.
+        hist    - Show CLI history.
+        monitor - Performance monitoring commands.
+        quit, q - Quit this session.
+        refresh - Rediscover storage, targets, and system resources.
+        rescan  - Rescan SCSI devices/LUNs on specified provider or all.
+        show    - Show object or category information.
+
+Configuration (Privileged) Mode Commands
+        add     - Add new object.
+        del     - Delete objects (if object is deletable).
+        set     - Set object property or invoke method.
+        load    - Reload configuration or load/run configuration script.
+        save    - Save current configuration.
+        update  - Update/sync/provision object.
+
+Examples
+        Show system summary (storage, system, fabric, etc.):
+                show
+        Show only physical disks, with detail for one level down:
+                show disks -l1
+        Add a server group with IP addresses:
+                add servers myserver ips=10.10.10.1;10.10.10.2
+        Add a target, assigned to the server group 'myserver', with iSCSI/TCP
+        transport, then add a LUN mapped to physical disk #2:
+                add targets iqn.mytar server=myserver,transport=iscsi
+                add targets/iqn.mytar/luns 1 volume=d2
+        Add a virtual FC port to a server:
+                add servers/myserver/hbas
+        Monitor performance of block devices sda, sdb* (device names
+        start with sdb):
+                monitor block sda,sdb*
+
+
+3.2.1 show command
+------------------
+Shows information, such as, configuration of the system and targets,
+disks, network, server groups, targets, LUNs.
+The amount of detail displayed depends on the level specified.
+
+Syntax
+        show [<category> [<item-list>]] [-l<level>] [-t<lines>] [-a] [-o]
+
+Key
+        <category>: The object class, in the format {targets | fc | servers |
+                    disks | volumes | system | config | log | version}
+        <item-list>: List of items for which to show details, in the format
+                     item1,item2,...
+        -l<level>: Drill down level of information from 0-2, e.g. -l2 displays
+                   more details than -l1.
+        -t<lines>: For logs, show only last number of lines, as specified.
+        -a: Show all disks including hidden/system disks.
+        -o: Show iSCSI target session parameters (for targets).
+
+Example
+VSA supports 4 log files: event (default), agent, audit, tgt.
+To show the contents of a log file:
+        show log [event|agent|audit|tgt] [-t<n>]
+To show the target and child LUNs (one level down):
+        show targets -l
+
+
+3.2.2 add command
+-----------------
+Add a new object to the system (for example, new target, LUN, etc.).
+
+Syntax
+        add <parent-object> [<item-name>][<parameters>] [-n] [-c]
+
+Key
+        <parent-object>: Full path to the object class of the new object.
+                <item-name>: Name of the new object. If no item name is provided
+                             a default value may be assigned in most cases.
+                <parameters>: List of parameters and values for the new object, in the
+                              format <parameter1>=<value1>,<parameter2>=<value2>,...
+                              Parameters depend on object class.
+                -n: Indicates that the properties are saved, but the object is not
+                    provisioned. You can set multiple parameters and provision later
+                    (using update command).
+                -c: Change default path to the new object path after the add operation.
+                    Commands that follow can use a relative path from this object.
+
+Examples
+To add a new storage target associated with the server group 'everyone':
+     add targets mytar server=everyone
+To add a new LUN (#1) to existing target associated with disk #0:
+     add targets/mytar/luns 1 volume=d0
+To add a new server group followed by setting the IP addresses (with -c opt):
+     add servers database -c
+     set ips 10.10.10.1;172.10.10.5
+To add a new target associated with iSER transport:
+     add targets mytar transport=iser
+	 
+
+3.2.3 set command
+-----------------
+Set and update parameters for an existing object. If the object
+does not exist, the system will try and create a new object.
+For example, when trying to set an attribute for a LUN that does not exist
+yet, an invalid attribute will cause the creation to fail.
+
+Syntax
+        set <object-path> <parameters> [-n]
+
+Key
+        <object-path>: Path to the configured object.
+        <parameters>: List of parameters and values for the object, in the
+                      format <parameter1>=<value1>,<parameter2>=<value2>,...
+                      For list parameters use: <parameter1>=<value1a>;<value1b>,..
+        -n: Indicates that the updates are saved, but the object is not
+            provisioned. You can set multiple parameters and provision later
+            (using update command).
+
+Examples
+To associate a target with server group 'everyone':
+     set targets/mytar server=everyone
+To set IP addresses associated with server group 'database':
+     set servers/database ips=10.10.10.1;172.10.10.5
+You can also use:
+     set servers/database/ips 10.10.10.1;172.10.10.5
+
+
+3.2.4 monitor command
+---------------------
+Monitor performance of storage, network, or system resources.
+
+Syntax
+        monitor {system | block | ib | ifc | target | server} [<item-list>]
+        [-i<interval>][-g<group-oper>]
+
+Key
+        {system | block | ib | ifc | target | server}: Type of data to monitor.
+        system - Overall system statistics (e.g. cpu, memory,etc.)
+        block  - Block storage device statistics
+        ib     - Infiniband port statistics
+        ifc    - Network interface (e.g. eth0) statistics
+        target - Targets/LUNs/Session statistics per target:lun
+        server - Targets/LUNs/Session statistics per server group
+        <item-list>: Not required for system monitoring. For other options, list
+                     the items to monitor, in the format item1,item2,...
+                     (If not specified, the default is all items.)
+        -i<interval>: Refresh time interval in seconds.
+        -g<group-oper>: Group operation when monitoring multiple lines/items.
+                        This flag enables display of sum, average, min, max statistics.
+                        <group-oper> is a string in which each letter represents an operation:
+                        r - raw data, s - sum, a - average, n - min, x - max.
+                        The default is -grs (show raw data and summary).
+        -s<n>: monitor only n samples
+        -w: wait for data even if currently not available (for sessions)
+
+Example
+To monitor performance for block devices sda, sdb* (device names start
+ with sdb):
+        monitor block sda,sdb*
+To monitor network interfaces eth0..n with sum and average
+        monitor ifc eth* -grsa
+
+
+3.3 VSCLI managed objects  
+-------------------------
+
+Mellanox storage accelerator (VSA) is an object-oriented system.
+Objects are organized in a hierarchy according to object type or class.
+For help on a specific object class, type: help <object-class>.
+
+
+Object hierarchy (for key object classes):
+/(root)
+	servers
+		hbas
+		vdisks
+	disks
+	raids
+		slaves
+	pools
+		slaves
+		volumes
+	targets
+		luns
+	fcports
+	providers
+		ifcs
+
+Key Object Classes in VSA (according to flow of operation)
+
+        servers   - Server group; a group of VSA clients, or initiators.
+                    Key attributes: ips - list of ip addresses (ips=<ip-addr1>, <ip-addr2>,...)
+        targets   - Storage or iSCSI target, hosting multiple (indexed) LUN objects.
+                    Key attributes: transport - iSCSI or iSER
+                    (transport={iscsi|iser}), server - associated server group
+                    (server=<servergroup>)
+        luns      - Logical unit; maps a local/FC volume to remote initiators.
+                    Key attributes: volume - associated storage disk or volume
+                    (volume=<dv-name>), bstype - backing store type.
+        disks     - Physical disk object.
+        volumes   - Logical or virtual disk object.
+        pools     - Storage pool (LVM or RAID/MD).
+        fcports   - FC port objects.
+        providers - VSA instance (for VSA cluster with multiple devices).
+        ifc       - Network interface (IB or Ethernet)
+
+
+Each target object contains multiple LUNs. LUNs are associated with
+real or virtual storage; LUN #0 is reserved for controller emulation.
+Use '#' or None instead of an index number to allocate a free LUN index.
+
+LUN Parameters
+        volume          - Associated storage volume, disk, or pool.
+        bstype          - Optional, backing store type (e.g. rdrw).
+        vparams         - virtual device parameters, type help vparams for more info.
+
+The volume can be referenced by an index (assigned by the CLI) or by a global
+unique ID (GUID) in any of the following ways:
+       d<n>[-part<p>]		- physical disk number n, p is the partition number.
+       D<guid>[-part<p>]	- physical disk with GUID and optional partition.
+       r.<name>			- raid / replica with name.
+       v.<pool name>.<vol name>	- virtual volume with name from pool with name.
+       [<provider>:]h.<H:B:T:L>	- referenced by SCSI path Host:Bus:Target:Lun on provider.
+       [<provider>:]f.<path>	- file (loop device, block emulation) path after the leading '/'.
+       [<provider>:]null	- null device (emulation) on provider.
+
+optional <provider> is the name of the VSA device in a cluster
+
+Note: Indexes and unique IDs can be viewed via the show command.
+
+Examples
+To add 2 new LUNs, one for disk index #0, the other for a null device:
+        add targets/mytar/luns volume=d0
+        add targets/mytar/luns 2 volume=/null
+
+
+===============================================================================
+4. Initiator (Linux Open-iSCSI) Configuration
+===============================================================================
+
+4.1 Initiator Installation
+---------------------------
+
+4.1.1 Initiator Overview
+-------------------------
+
+The Linux initiator stack is composed of two sets of elements:
+a. iscsi-initiator-utils (user space management utilities):
+   * iscsid(8) daemon
+   * iscsiadm(8) administration utility
+   * iscsi service 
+   * etc. 
+b. iSCSI kernel modules: 
+   * scsi_transport_iscsi
+   * libiscsi
+   * iscsi_tcp (the TCP transport)
+   * ib_iser (the iSER transport) 
+   * more transports...
+
+On the RHEL, OEL, CentOS distributions, install the iscsi initiator package using
+	# yum install iscsi-initiator-utils
+
+
+4.1.2 Recommended Platforms
+ ----------------------------
+
+--The OFED 1.5.x series supports the iSER initiator transport only for RHEL 5.4 . 
+  For other distributions, OFED-based setups are possible with OFED 1.4.x only.
+
+--We strongly recommend using the iSCSI and IB stacks provided by the Linux 
+  distribution, which support RHEL 5.4, RHEL 5.5, RHEL 5.6, and RHEL 6.
+
+--We recommend using IB stacks provided by the Linux distribution, not from the 
+  OFED version.
+
+Notes:   
+
+--The kernel modules in iSCSI depend on other modules (crypto, IB, etc.).
+  These modules might come from different and potentially unsynchronized
+  sources, leading to binary or version incompatibility.
+ 
+--Configurations with mixed OFED and Linux distribution versions are not 
+  supported. Thus, when using OFED packages, avoid situations where the iSCSI 
+  and/or iSER modules are from the Linux distribution, while IB modules are from 
+  OFED, or vice versa. Mixed configurations lead to symbol inconsistency, 
+  preventing ib_iser from loading.
+
+Install IB stack provided by the Linux distribution using the standard yum(8)
+mechanism with a dedicated yum group, which incorporates the various IB packages. 
+The group name for the EL (RHEL, OEL, CentOS) 5.x series is different from the group 
+name for the EL 6.x series. 
+
+The commands to install the group on both environments are:
+        on EL 5.x # yum groupinstall "OpenFabrics Enterprise Distribution"
+        on EL 6.x # yum groupinstall "Infiniband Support"
+
+Note: on the 5.x series the IB stack service is called "openibd", and "rdma" 
+on the 6.x series. A service start is required following the installation. 
+
+
+4.1.3 Installing a Patched Binary Kernel Module
+------------------------------------------------
+
+To override the iscsi-iser module supplied with the installation with 
+a binary built from the patched sources (bug fixes, improvements that 
+are not in the standard Linux distribution yet):
+1. Copy the new module file to:
+		/lib/modules/`uname -r`/extra/ib_iser.ko
+2. To direct the module loader to use the newer module file instance, run:
+		depmod -a
+3. To check that the procedure was successful, run:
+		modinfo ib_iser
+
+You should see something similar to:
+	filename:       /lib/modules/2.6.18-164.el5/extra/ib_iser.ko
+instead of:
+	filename:       /lib/modules/2.6.18-164.el5/kernel/drivers/infiniband/ulp/iser/ib_iser.ko
+
+
+4.2 Initiator Configuration
+----------------------------
+
+On the initiator side, perform iSCSI discovery using the following command:
+	iscsi_discovery <ip-addr> 
+where <ip-addr> is the target's IPoIB address, if the target transport 
+was explicitly set to be iser, use "iscsi_discovery <ip-addr> -t iser"
+
+The iscsi_discovery script is supplied in this package.
+
+If iscsi_discovery was successful, a file is created, for example:
+	/etc/iscsi/nodes/tgt.abc/<ip-addr>,3260,1/default
+"tgt.abc" was used in the above example, but the dir name will be 
+whatever you specify at the target side.
+
+For iser targets, this file should already contain a line:
+	iface.transport_name = iser
+
+You do not need to edit this file, just check that the transport is correct.
+
+You can now restart the iscsi service and the game should start
+as usual.
+
+When the connection is up, to display which parameters are actually used, type:
+	iscsiadm -m session -P 3
+
+
+===============================================================================
+5. Linux TGT Target
+===============================================================================
+
+VSA incorporates an accelerated version of the Linux SCSI Target (tgt). 
+The accelerated tgt service (isertgtd) and files are installed automatically 
+as part of the VSA installation process. 
+
+To start, stop, or query the status of tgt, use:
+	/etc/init.d/isertgtd start|stop|status
+
+(as opposed to /etc/init.d/tgtd in the open-source distro).
+
+Note: VSA incorporates a watchdog/monitor service that automatically 
+restarts the isertgtd service if it is terminated. 
+
+The main tgt management command is tgtadm. To view the current tgt 
+configuration, use:
+		tgtadm --mode target --op show
+
+To generate core dumps on the target machine, use:
+		ulimit -c unlimited
+
+
+===============================================================================
+6. Notes and Known/Fixed Issues
+===============================================================================
+
+See the VSA Release Notes.

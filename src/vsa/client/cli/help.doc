@@ -1,0 +1,650 @@
+$$
+Mellanox Storage Accelerator (VSA) Command Line Help
+
+General syntax:  command <object/path> <parameters> <options>
+Parameters and options depend on the command and object type.
+
+For command-specific help, type: help <command>
+For a list of object types with short descriptions, type: help objects
+For help about a specific object type (targets, LUNs, servers, etc.),
+type: help class <object-type>
+
+General Commands
+	config   - Enter configuration mode and/or change default path.
+	exit     - Exit sub-menu.
+	help, ?  - Show this help. Use help <command> to show specific help.
+	hist     - Show CLI history.
+	monitor  - Performance monitoring commands.
+	quit, q  - Quit this session.
+	reboot   - Reboot a provider (or all).
+	refresh  - Rediscover storage, targets, and system resources.
+	rescan   - Rescan SCSI devices/LUNs on specified provider or all.
+	show, sh - Show object or category information.
+
+Configuration (Privileged) Mode Commands
+	add     - Add new object.
+	del     - Delete objects (if object is deletable).
+	set     - Set object property or invoke method.
+	load    - Reload configuration or load/run configuration script.
+	save    - Save current configuration.
+	update  - Update/sync/provision an object.
+
+Examples
+	Show system summary (storage, system, fabric, etc.):
+		show
+	Show only physical disks, with detail for one level down:
+		show disks -l1
+	Add a server group with IP addresses:
+		add servers myserver ips=10.10.10.1;10.10.10.2
+	Add a target, assigned to the server group 'myserver', with iSCSI/TCP
+        transport with a LUN mapped to physical disk #2:
+		add targets iqn.mytar server=myserver,transport=iscsi,volumes=d2
+	Add a virtual FC port to a server:
+		add servers/myserver/hbas
+	Monitor performance of block devices sda, sdb* (device names
+        start with sdb):
+		monitor block sda,sdb*
+
+$$add
+Add a new object to the system (for example, new target, LUN, etc.).
+
+Syntax
+	add <parent-object> [<item-name>][<parameters>] [-n] [-c]
+
+Key
+	<parent-object>: Full path to the object class of the new object.
+		<item-name>: Name of the new object. If no item name is provided
+			     a default value may be assigned in most cases.
+		<parameters>: List of parameters and values for the new object, in the
+			      format <parameter1>=<value1>,<parameter2>=<value2>,...
+			      Parameters depend on object class.
+		-n: Indicates that the properties are saved, but the object is not
+		    provisioned. You can set multiple parameters and provision later
+		    (using update command).
+		-c: Change default path to the new object path after the add operation.
+		    Commands that follow can use a relative path from this object.
+
+Examples
+To add a new storage target associated with the server group 'everyone':
+     add targets mytar server=everyone
+To add a new LUN (#1) to existing target associated with disk #0:
+     add targets/mytar/luns 1 volume=d0
+To add a new server group followed by setting the IP addresses (with -c opt):
+     add servers database -c
+     set ips 10.10.10.1;172.10.10.5
+To add a new target associated with iSER transport:
+     add targets mytar transport=iser
+
+
+$$config
+Enter configuration mode (privileged users only) to add, set,
+or delete objects.
+
+Syntax
+	config [<object-path>]
+
+Key
+	<object-path>: Not required to enter the privileged configuration menu.
+	Use to change the default path (prefix) to the objects you want to edit.
+	Start with '/' to indicate the root path, otherwise the path is relative.
+
+Examples
+Enter Configuration mode:
+	config
+To change the default path to the 'everyone' server group:
+	config /servers/everyone
+
+
+$$save
+Save the current configuration or output the latest configuration to file
+or screen.
+
+Syntax
+	save [<object-path>] [> {<file-name> | screen}]
+
+Key
+	<object-path>:  The object path/hierarchy from which to start the export.
+			By default all the objects are exported/saved
+	> {<file-name> | screen}: The filename to save to, or output to the screen.
+
+Examples
+To save the configuration to a different file from the default:
+	save > new-config
+To output the configuration of all target objects to the screen:
+	save /targets > screen
+
+
+$$load
+Load a saved configuration, or load/run a configuration script from a file
+or from the screen.
+
+Syntax
+	load [file-name | > screen]
+
+Key
+	file-name: The location of the configuration file to read/load.
+       	The default is config.db (in the installation path)
+	> screen: When using this option the default config file is shown
+	    	  on the screen.
+
+Example
+To output the last saved configuration to screen:
+	load > screen
+
+$$exit
+Exit the config submenu.
+
+Syntax
+	exit
+
+
+$$monitor
+Monitor performance of storage, network, or system resources.
+
+Syntax
+	monitor {system | storage | block | ib | ifc | target | server}
+	[<item-list>][-i<interval>][-g<group-oper>]
+
+Key
+	{system | storage | block | ib | ifc | target | server}:
+			 Type of data to monitor.
+	system - Overall system statistics (e.g. cpu, memory,etc.)
+	storage- Monitor storage objects (disks, pools, raids, ..)
+	block  - Block storage device statistics (use block names)
+	ib     - Infiniband port statistics
+	ifc    - Network interface (e.g. eth0) statistics
+	target - Targets/LUNs/Session statistics per target:lun
+	server - Targets/LUNs/Session statistics per server group
+	<item-list>: Not required for system monitoring. For other options, list
+	 	     the items to monitor, in the format item1,item2,...
+		     (If not specified, the default is all items.)
+	-i<interval>: Refresh time interval in seconds.
+	-g<group-oper>: Group operation when monitoring multiple lines/items.
+			This flag enables display of sum, average, min, max statistics.
+		  	<group-oper> is a string in which each letter represents an operation:
+		  	r - raw data, s - sum, a - average, n - min, x - max.
+		  	The default is -grs (show raw data and summary).
+	-s<n>: monitor only n samples
+	-w: wait for data even if currently not available (for sessions)
+
+Example
+To monitor performance for storage devices disk1 (d1) and RAID r1 (r.r1):
+	monitor storage d1,r.r1
+To monitor performance for block devices sda, sdb* (device names start
+ with sdb):
+	monitor block sda,sdb*
+To monitor network interfaces eth0..n with sum and average:
+	monitor ifc eth* -grsa
+
+$$objects
+Mellanox storage accelerator (VSA) is an object-oriented system.
+Objects are organized in a hierarchy according to object type or class.
+For help on a specific object class, type: help <object-class>.
+
+Object hierarchy (for key object classes):
+/(root)
+	servers
+		hbas
+		vdisks
+	disks
+		paths
+		partitions
+	raids
+		slaves
+	pools
+		slaves
+		volumes
+	targets
+		luns
+	fcports
+	providers
+		ifcs
+
+Key Object Classes in VSA (according to flow of operation)
+
+	servers   - Server group; a group of VSA clients, or initiators.
+		    Key attributes: ips - list of ip addresses (ips=<ip-addr1>, <ip-addr2>,...).
+			    servers have vDisks and vHBAs
+	targets   - Storage or iSCSI target, hosting multiple (indexed) LUN objects.
+		    Key attributes: transport - iSCSI or iSER
+		    (transport={iscsi|iser}), server - associated server group
+		    (server=<servergroup>)
+	luns	  - Logical unit; maps a local/FC volume to remote initiators.
+		    Key attributes: volume - associated storage disk or volume
+		    (volume=<dv-name>), bstype - backing store type.
+	disks     - Physical disk object.
+	paths     - Path to a physical disk.
+	partitions- Disk partition.
+	raids	  - Software RAID or Replication (DR).
+	pools     - Storage pool (LVM).
+	volumes   - Logical disk object.
+	fcports	  - FC port objects.
+	providers - VSA instance (for VSA cluster with multiple devices).
+	ifc       - Network interface (IB or Ethernet)
+
+
+$$set
+Set and update parameters for an existing object. If the object
+does not exist, the system will try and create a new object.
+For example, when trying to set an attribute for a LUN that does not exist
+yet, an invalid attribute will cause the creation to fail.
+
+Syntax
+	set <object-path> <parameters> [-n]
+
+Key
+	<object-path>: Path to the configured object.
+       	<parameters>: List of parameters and values for the object, in the
+		      format <parameter1>=<value1>,<parameter2>=<value2>,...
+		      For list parameters use: <parameter1>=<value1a>;<value1b>,..
+       	-n: Indicates that the updates are saved, but the object is not
+       	    provisioned. You can set multiple parameters and provision later
+       	    (using update command).
+
+Examples
+To associate a target with server group 'everyone':
+     set targets/mytar server=everyone
+To set IP addresses associated with server group 'database':
+     set servers/database ips=10.10.10.1;172.10.10.5
+You can also use:
+     set servers/database/ips 10.10.10.1;172.10.10.5
+
+
+$$del
+Delete existing object(s). When clients are connected, targets are not
+deletable unless you force deletion. The clients will be disconnected and
+then targets will be deleted. Objects such as disks cannot be deleted.
+
+Syntax
+	del <object-path> [-f]
+
+Key
+       	<object-path>: Path to the configured object(s). You can use the *
+        	       wildcard.
+	-f: Force deletion. When clients are connected, targets cannot be deleted.
+	Force Deletion disconnects the clients and then deletes the targets.
+
+Example
+To delete all targets beginning with 'iqn':
+	del targets/iqn*
+
+
+$$show
+Shows information, such as, configuration of the system and targets,
+disks, network, server groups, targets, LUNs.
+The amount of detail displayed depends on the  level specified.
+
+Syntax
+	show [<category>/<path>] [-l<level>] [-t<lines>] [-a] [-d]
+	[-s<separator>] [-w<width>]
+	show log [event | audit | agent | tgt | webportal] [<provider>]
+
+Key
+	<category>/<path>: The reporting category or object path to show
+	    valid categories {targets | fcports | fctree | servers |
+ 		    disks | raids | pools | system | config | log | version | cache}
+	-l<level>: Drill down level of information from 0-2, e.g. -l2 displays
+		   more details than -l1.
+	-t<lines>: For logs, show only last number of lines, as specified.
+	-a: Show all disks including hidden/system disks.
+	-s<separator> : Specify a different table column separator.
+	-w<width> : Max chars/width to print in a table.
+	-d : Show details.
+Example
+VSA supports 4 log files: event (default), agent, audit, tgt.
+To show the contents of a log file:
+	show log [event|agent|audit|tgt] [-t<n>]
+To show the target and child LUNs (one level down):
+	show targets -l
+
+$$update
+Update, synchronize, and/or provision an object. For example,
+after setting or adding objects with -n option, the properties
+are written to the database but the item is not updated/provisioned.
+The update command verifies that the item is provisioned according
+to the object properties.
+
+Syntax
+	update <object-path>
+
+Key
+	<object-path>: Full path to object to update.
+
+$$quit
+Exit from the system and optionally save configuration. By default, the
+system will prompt to save if it detects changes.
+
+Syntax
+	quit [silent|nosave]
+
+Key
+	silent: Quit and save without a prompt.
+	nosave: Quit without saving and without a prompt.
+
+$$hist
+Show CLI command history.
+
+Syntax
+	hist
+
+$$refresh
+Refresh object data and state, reload storage and system objects.
+
+Syntax
+	refresh
+
+$$rescan
+Rescan SCSI bus/devices.
+
+Syntax
+	rescan [<provider>[:<host>]]
+
+Key
+	<provider>: VSA provider name (host name of VSA provider).
+		    By default, scan all VSA providers.
+	<host>: SCSI host number, by default, scan all hosts.
+
+$$class target
+Target objects represent storage LUNs to clients, or initiators.
+A target is deployed on a storage device or gateway, is associated with
+a specific Portal (port and/or IP combination), mapped to a server group
+and can deliver traffic through TCP (iSCSI) or RDMA (iSER) transport.
+Use '#name' to automatically prefix the iSCSI target name with device
+and port info.
+
+Target Parameters
+	device  	- Storage device to be deployed on (in cluster configuration.)
+	volumes		- List of storage objects to add as LUNs.
+	server  	- Server group associated with the target (e.g. 'everyone' for
+        		  all clients).
+	transport 	- Transport protocol (iscsi|iser).
+	iscsiopt	- List of iSCSI session options/parameters, type help iscsiopt
+			  for more info.
+	vparams		- Virtual device parameters, type help vparams for more info.
+	pid		- iSCSI target process instance 0 (default), 1, 2, etc.
+
+Target Methods
+	migrate - Migrate a DR (replica) based target to its counterpart.
+
+Examples
+To add a target with default generated name.
+You can run this command multiple times.
+       	add /targets server=everyone
+
+To postfix 'name':
+	add /targets #<name> server=everyone
+This command cannot be executed multiple times.
+
+$$class lun
+Each target object contains multiple LUNs. LUNs are associated with
+real or virtual storage; LUN #0 is reserved for controller emulation.
+Use '#' or None instead of an index number to allocate a free LUN index.
+
+LUN Parameters
+	volume		- Associated storage volume, RAID or disk.
+	bstype		- Optional, backing store type (e.g. rdrw).
+	vparams		- Virtual device parameters, type help vparams for more info.
+
+The volume can be referenced by an index (assigned by the CLI) or by a global
+unique ID (GUID) in any of the following ways:
+
+
+       d<n>[-part<p>]		- Physical disk number n, and partition number p.
+       D<guid>[-part<p>]	- Physical disk with GUID and optional partition.
+       r.<name>			- RAID / replica with name.
+       v.<pool name>.<vol name>	- Virtual volume with name from pool with name.
+       [<provider>:]h.<H:B:T:L>	- Referenced by SCSI path Host:Bus:Target:Lun on provider.
+       [<provider>:]f.<path>	- File (loop device, block emulation) path after the leading '/'.
+       [<provider>:]null	- Null device (emulation) on provider.
+
+Optional <provider> is the name of the VSA device in a cluster.
+
+Note: Indexes and unique IDs can be viewed via the show command.
+
+Examples
+To add 2 new LUNs, one for disk index #0, the other for a null device:
+	add targets/mytar/luns volume=d0
+	add targets/mytar/luns 2 volume=null
+
+$$class server
+Server group object, defines a group of clients (initiators) which access
+the VSA devices. Each target object is associated with a server group, which is
+used for access control (LUN masking), only the list of IP addresses defined
+in that group will be allowed by the target.
+Server groups can also have virtual FC HBAs (auto generated FC NPIV ports).
+
+Server Parameters
+	ips	- list of IP addresses used by servers in that group to access VSA.
+	ostype	- OS type (unknown, linux, windows, vmware, other).
+	wwnn	- FC World Wide node name (used for vHBAs created for that server).
+
+$$class provider
+VSA device/provider, a device running the VSA stack in a multi-device/cluster
+configuration. VSA manager can control multiple providers.
+Each provider has multiple ifc (network interface) objects.
+A provider name will typically prefix relevant objects, e.g. an interface name
+is composed of <provider-name>:<local-name> (vsa1:eth0)
+
+Provider Parameters
+	<url>		- Remote host name or IP address.
+	cachedevices	- Devices to be used for disk caching purposes.
+	zone		- Geographical location (e.g rack, site).
+	role		- Role in cluster deployment: master, standby, or compute.
+
+Provider Methods
+	evacuate - Migrate all the DR-based targets that currently run on this
+		   provider to their counterparts.
+
+Examples
+To add a new provider:
+	add provider <url> role=compute
+
+$$class disk
+Physical disk object, this can be a SAS/SATA/iSCSI/FC/Flash disk.
+Disks are automatically discovered (not added manually).
+Users can disable access to a disk by changing the reqstate attribute,
+or overwrite SCSI information via the vparams property.
+
+Disk Parameters
+	reqstate  - Requested state (enable/disable).
+	direct    - Direct mapping of disk parameters (True/False).
+	vparams   - Virtual device parameters, type help vparams for more info.
+	iosched   - IO scheduler (e.g noop, cfq) to be used.
+	readahead - Amount of read ahead.
+	cachesize - Size of cache (caching enabled if size > 0) for this disk.
+
+$$class raid
+Software or Replication RAID object, created on top of physical disks.
+RAID levels supported: 0 (striping), 1 (mirroring), 5, 6, 10, linear,
+			dr (distributed replication)
+
+RAID Parameters
+	raid	         - RAID level.
+	devices (slaves) - disks to be used for the RAID.
+	cachesize        - Size of cache (caching enabled if size > 0).
+			   Cache is not supported over dr raid.
+	spare            - Number of devices to act as spare devices.
+
+$$class pool
+Storage pool (LVM Volume Group), created on top of physical disks.
+
+Pool Parameters
+	glbl	 - Global (default false) pool that can be used to create 
+		   virtual disks.
+	devices (slaves) - Disks to be used for the pool.
+
+$$class volume
+Logical disk (LVM Logical Volume), created from a pool.
+
+Volume Parameters
+	size       - Size of the volume in megabytes.
+	stripes    - Number of stripes to use.
+	stripesize - Size of each stripe.
+
+$$class	ifc
+Provider network interface object, defines the Ethernet or InfiniBand network
+interface and TCP/IP properties. Each provider may have multiple interfaces
+(named eth* or ib*), which are discovered automatically, and can be configured
+or monitored.
+
+IFC Parameters
+	ip	- IP address
+	mask	- IP network mask (e.g. 255.255.0.0)
+	bcast	- IP broadcast address
+	mtu	- MTU
+	dhcp	- Obtain address through DHCP (True/False)
+
+$$class hba
+Virtual FC HBA port object, defined under server group objects.
+You can add Virtual FC ports to server groups, which will provision a virtual
+FC port on one or more VSA appliances (through FC NPIV), and will proxy/map all
+storage devices that are zoned or mapped to the virtual FC port to the server
+group members. In this mode the storage targets are generated automatically.
+Use the update command to refresh/remap new storage when the FC fabric is changed.
+
+When virtual FC ports are created, you can assign them manually to a specific
+VSA provider or physical FC port, or preferably they can be assigned automatically. 
+When assigned automatically, VSA balances the virtual FC ports across devices
+and physical ports, and ensure optimal multipath configuration.
+FC WWN port and node names are assigned from a pool, but you can also
+assign them manually (by specifying a name in the add command).
+
+Each server group has a single WW node name, and up to 4 virtual port names.
+
+HBA Parameters
+	port	- Optional, when undefined, will find an FC port automatically.
+		  port format is <provider|wwpn>.
+	avgload	- Average bandwidth load in MB/s, this value is used when
+		  automatically assigning ports, for balancing and reservation.
+		  The default load is 50.
+
+$$class fcport
+
+FC SAN Ports object, provides information for FC ports directly attached to 
+VSA storage nodes (which make them FC initiators) or FC fabric ports discovered 
+by VSA (target ports).
+
+FCPORT Parameters
+	State	- FC port state.
+	Role	- FC Initiator or Target.
+	wwnn	- FC World Wide node name.
+	wwpn	- FC World Wide port name.
+
+	Speed    - port speed in giga bits per seconds.
+	Provider - VSA provider node name.
+	HBA      - Linux SCSI host name.
+	vPorts   - number of virtual FC NPIV based ports.
+	Parent   - The physical port to which a virtual port belongs.
+	tgports  - Discovered FC Target ports for virtual port.
+
+Note: speed, provider, HBA, vports, parent are only relevant for FC Initiator.
+
+Note: all FCPort parameters are read-only, expcet for provider or wwpn for 
+virtual port.
+
+$$iscsiopt
+iSCSI session parameters, can be defined globally or per target.
+The iSCSI parameters can assist when tuning performance or interoperating
+with specific iSCSI clients.
+
+To edit global default iSCSI parameters, type:
+	set /general/iscsiopt <param1>=<value1>;<param2>=<value2>;...
+To edit target specific iSCSI parameters, type:
+	set targets/<target-name>/iscsiopt <param1>=<value1>;<param2>=<value2>;...
+
+Typical iSCSI parameters are:
+  MaxRecvDataSegmentLength=8192
+  MaxXmitDataSegmentLength=8192
+  HeaderDigest=None
+  DataDigest=None
+  InitialR2T=Yes
+  MaxOutstandingR2T=1
+  ImmediateData=Yes
+  FirstBurstLength=65536
+  MaxBurstLength=262144
+  DataPDUInOrder=Yes
+  DataSequenceInOrder=Yes
+  ErrorRecoveryLevel=0
+  IFMarker=No
+  OFMarker=No
+  DefaultTime2Wait=2
+  DefaultTime2Retain=20
+  OFMarkInt=Reject
+  IFMarkInt=Reject
+  MaxConnections=1
+  RDMAExtensions=Yes
+  TargetRecvDataSegmentLength=262144
+  InitiatorRecvDataSegmentLength=262144
+  MaxOutstandingUnexpectedPDUs=0
+
+$$vparams
+Each storage element can have virtual SCSI parameters, which are used when
+creating targets and LUNs. By default, original disk SCSI params are preserved.
+Users can overwrite SCSI parameters for virtual or physical storage devices
+with custom properties.
+
+vparams can be defined in disk, path, volume, target, and lun objects.
+If vparams is defined in multiple locations, the values are aggregated/added in
+the following order: disk -> path/volume -> target -> lun.
+
+vparams is a list of parameter and value pairs, valid parameters include:
+vendor_id, product_id, product_rev, scsi_id, scsi_sn, removable, mode_page,
+sense_format, online, path, direct.
+
+$$quick
+Quick, step-by-step configuration guide.
+First, complete VSA installation, run vscli.
+Note: Auto Tab completion is available on all commands.
+Before any configuration step, type: config
+
+1. Define new server group (a set of clients/initiators).
+If storage access control is not required, the built-in 'everyone' server
+group can be used.
+
+Example:
+	config
+	add servers dbsrv ips=10.10.10.3;10.10.11.3
+
+Defined new server group (dbsrv) with 2 IP addresses (the IP addresses are
+the ones that will be allowed by targets).
+
+2. Create new storage target and map it to a server group (or everyone),
+define the transport (RDMA or TCP).
+
+Example:
+	add targets iqn.tar1 server=dbsrv,transport=iser
+
+Defined a new target named 'iqn.tar1' mapped to server group dbsrv, and using
+RDMA (iSER) transport. If a target name is not provided, a new name is auto
+generated.
+
+Note: By default, ISCSI TCP transport is selected, use RDMA only if the
+initiator supports RDMA.
+
+3. Add LUNs/storage to target, map VSA-discovered local or FC based storage to
+Target LUNs (will allow the initiators to see the storage).
+
+Example:
+	add targets/iqn.tar1/luns volume=<vol>
+
+This command adds a new LUN to the target mapped to object <vol>.
+Replace <vol> with one of the storage object names discovered in the system.
+To see available storage, use the show command. Physical disks are marked d<n>
+(n=number). Type 'help class lun' for details on volume naming and options.
+
+Note: Steps 2 and 3 can be done simultaneously using a "volumes=" directive when 
+creating (adding) the target.
+
+Example:
+	add targets iqn.tar1 server=dbsrv,transport=iser,volumes=<vol1>;<vol2>
+
+4. Configure client/initiator and initiate an iSCSI or iSER connection.
+See the user manual for common initiator configuration.
+
+If initiator connectivity failed, try to ping from the initiator to the VSA
+target IP address to verify connectivity. On IB use ibstat to verify
+that both target and initiator ports are up/active.
+
+5. Monitor statistics using one of the monitor commands.
+
+$$

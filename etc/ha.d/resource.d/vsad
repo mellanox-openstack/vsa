@@ -1,0 +1,41 @@
+#!/bin/bash
+#
+# This script is inteded to be used as resource script by heartbeat
+#
+# Copyright (C) 2011 Roi Dayan <roid@mellanox.com>
+#
+
+start() {
+	/etc/init.d/vsad start
+}
+
+stop() {
+	/etc/init.d/vsad stop
+	return 0
+}
+
+status() {
+	#vsad status returns opposite value
+	/etc/init.d/vsad status
+	r=$?
+	if [[ "$r" == 0 ]]; then
+		return 1
+	fi
+	return 0
+}
+
+# See how we were called.
+case "$1" in
+    start)
+	start
+	;;
+    stop)
+	stop
+	;;
+    status)
+        status
+        ;;
+    *)
+	echo $"Usage: $0 {start|stop|status}"
+	;;
+esac

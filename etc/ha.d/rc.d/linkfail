@@ -1,0 +1,66 @@
+#!/bin/bash
+#
+# Copyright (C) 2011 Roi Dayan <roid@mellanox.com>
+#
+
+# interval between checks
+INTERVAL=5
+
+# idle when going standby
+IDLE=60
+
+
+HA_DIR=/etc/ha.d
+. ${HA_DIR}/shellfuncs
+
+
+log() {
+	logger -t linkfail "$1"
+}
+
+find_data_interface() {
+	local l=`awk '/DATA/,/ucast/ { print $2 }' /etc/ha.d/ha.cf`
+	#local l=`grep -o 'ucast [0-9a-z]* .*' /etc/ha.d/ha.cf | awk '{print $2}'`
+	die=true
+
+	for i in $l ; do
+		if [ -d /sys/class/net/${i} ]; then
+			interface=$i
+			die=false
+			break
+		fi
+	done
+
+	$die && log "ERROR: data interface not found." && exit 100
+	interface=$i
+}
+
+is_running() {
+	if [[ `cat /sys/class/net/$interface/carrier` = 1 ]]; then
+		return 0
+	fi
+	return 1
+}
+
+go_standby() {
+	log "Interface $interface is not RUNNING. going standby."
+	/usr/share/heartbeat/hb_standby
+	sleep $IDLE
+}
+
+is_slave() {
+	local a=`cl_status hbstatus && cl_status rscstatus`
+	if [[ "$a" == "none" ]]; then
+		return 0
+	fi
+	return 1
+}
+
+find_data_interface
+
+log "Monitoring interface $interface"
+
+while true; do
+	is_slave || is_running || go_standby
+	sleep $INTERVAL
+done

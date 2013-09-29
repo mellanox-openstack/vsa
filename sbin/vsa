@@ -1,0 +1,155 @@
+#!/bin/bash
+
+# Check we are root
+if [[ $EUID -ne 0 ]]; then
+   echo "This script must be run as root" 1>&2
+   exit 1
+fi
+
+services="isertgtd vsad vsasrv vsam"
+services_r="vsam vsasrv vsad isertgtd"
+
+extra_services="vsa-clean flashcache drbd"
+# this order would work for drbd over cache (direct attached storage, non GW mode)!!!
+extra_services_r="drbd vsa-clean flashcache"
+
+start() {
+	for i in $services ; do
+		service $i start
+	done
+}
+
+stop() {
+	for i in $services_r ; do
+		service $i stop
+	done
+}
+
+
+start_all() {
+	for i in $extra_services ; do
+		service $i start
+	done
+	start
+}
+
+stop_all() {
+	stop
+	for i in $extra_services_r ; do
+		service $i stop
+	done
+}
+
+pid_exists() {
+	local p=$1
+	if [ -d "/proc/$p" ]; then
+		return 0
+	fi
+	return 1
+}
+
+chk_status() {
+	local i=$1
+	service $i status &
+	local p=$!
+	disown $p
+	local c
+	for c in `seq 10`; do
+		sleep 1
+		if ! `pid_exists $p`; then
+			break
+		fi
+	done
+	if `pid_exists $p`; then
+		kill -9 $p
+		return 1
+	fi
+	return 0
+}
+
+status() {
+	selinux_status
+	for i in $services ; do
+		chk_status $i 2>/dev/null
+		if (( $? )) ; then
+			echo "$i is hanging"
+		fi
+	done
+}
+
+selinux_status() {
+	selinuxenabled && [ `getenforce` != "Permissive" ] && echo "Warning: SELinux is enabled in enforcing state. some functionally might not work properly."
+}
+
+version() {
+	rpm -q scsi-target-utils vsa vsa-ha
+}
+
+hacmd() {
+	local cmd=$1
+	[ -f /usr/bin/cl_status ] && cl_status hbstatus && $cmd
+}
+
+cluster-status() {
+	local st=$(hacmd "cl_status rscstatus")
+	case "$st" in
+		*none)	echo "Current: slave" ;;
+		*all)	echo "Current: master" ;;
+		*) 	echo -e "$st" ;;
+	esac
+}
+
+ha-takeover() {
+	hacmd /usr/share/heartbeat/hb_takeover
+	echo "Executed ha takeover"
+}
+
+ha-standby() {	
+	hacmd /usr/share/heartbeat/hb_standby
+	echo "Executed ha standby"
+}
+
+usage() {
+	echo "Usage: $0 <option>
+Options:
+	start		- start all vsa services
+	stop		- stop all vsa services
+	restart		- restart all vsa services
+	status		- print status for all vsa services
+	version		- print vsa packages version
+	cl-status	- print cluster status
+	takeover	- ha takeover
+	standby		- ha standby
+
+* To enter vsa cli run: vscli
+"
+}
+
+case "$1" in
+	"start")
+		start ;;
+	"stop")
+		stop ;;
+	"restart")
+		stop
+		sleep 1 #this is to wait for tgtd to be killed
+		start ;;
+	"status")
+		status ;;
+	"version")
+		version ;;
+	"cl-status")
+		cluster-status;;
+	"takeover")
+		ha-takeover;;
+	"standby")
+		ha-standby;;
+	"start-all")
+		start_all ;;
+	"stop-all")
+		stop_all ;;
+	*)
+		usage ;;
+esac
+
+exit 0

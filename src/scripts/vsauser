@@ -1,0 +1,203 @@
+#!/bin/bash
+
+USER_TAG="VSA User"
+GROUP="vsa"
+FILES_GROUP="vsafiles"
+
+admin_shell="/usr/sbin/vscli"
+user_shell="/usr/sbin/vscliuser"
+
+adduser="/usr/sbin/useradd"
+
+new_admin()
+{
+	local USER=$1
+	local PASS="123456"
+	local UHOME="/opt/vsa"
+	local USHELL=$admin_shell
+
+	check_group
+	check_user $USER
+
+	echo "Creating new admin account: $USER/$PASS"
+	#adm
+	$adduser -u 0 -o -g 0 -G root,bin,daemon,sys,disk,wheel -M -d $UHOME -s $USHELL -c "$USER_TAG" $USER
+	reset_passwd $USER $PASS
+}
+
+new_user()
+{
+        local USER=$1
+        local PASS="123456"
+        local UHOME="/opt/vsa"
+        local USHELL=$user_shell
+
+	check_group
+	check_user $USER
+
+        echo "Creating new user account: $USER/$PASS"
+	#adm
+        $adduser -u 0 -o -g 0 -G root,bin,daemon,sys,disk,wheel -M -d $UHOME -s $USHELL -c "$USER_TAG" $USER
+        reset_passwd $USER $PASS
+}
+
+reset_passwd()
+{
+	local USER=$1
+	local PASS=$2
+
+	if [ -z "$USER" ] || [ -z "$PASS" ]; then
+		echo "Error reseting password"
+	else
+		echo "$PASS" | passwd --stdin $USER
+	fi
+}
+
+check_group()
+{
+	if ! grep -E "^$GROUP:" /etc/group > /dev/null; then
+		echo "Set groups first"
+		exit 1
+	fi
+}
+
+check_user ()
+{
+	USER=$1
+	if id -u $USER > /dev/null 2>&1; then
+		echo "Not creating user account '$USER', already exists"
+		exit 1
+	fi
+}
+
+set_groups()
+{
+	if ! grep -E "^$GROUP:" /etc/group > /dev/null; then
+		groupadd $GROUP
+	fi
+
+	if ! grep -E "^$FILES_GROUP:" /etc/group > /dev/null; then
+                groupadd $FILES_GROUP
+        fi
+
+	add_shell $admin_shell
+	add_shell $user_shell	
+	add_shell $sftpserver
+}
+
+del_groups()
+{
+	groupdel $GROUP
+	groupdel $FILES_GROUP
+
+	#del_shell $sftpserver
+	del_shell $user_shell
+	del_shell $admin_shell
+}
+
+find_sftpserver()
+{
+        #local m=$(locate -q sftp-server | head -1)
+	#rpm -ql openssh|grep ^/.*/sftp-server$
+
+	[ -f "/usr/libexec/openssh/sftp-server" ] && echo "/usr/libexec/openssh/sftp-server"
+	[ -f "/usr/lib64/ssh/sftp-server" ] && echo "/usr/lib64/ssh/sftp-server"
+}
+
+add_shell()
+{
+	local shell=$1
+
+	if [ ! -z $shell ]; then
+		if ! grep -E "^$shell$" /etc/shells > /dev/null; then
+        	        echo $shell >> /etc/shells
+		fi
+        fi
+}
+
+del_shell()
+{
+	local shell=$1
+	
+	if [ ! -z $shell ]; then
+		local esc=$(echo $shell | sed 's/\//\\\//g')
+		sed "/^$esc$/d" /etc/shells > /tmp/shells
+		mv -f /tmp/shells /etc/shells
+	fi
+}
+
+new_files_user()
+{
+        local USER=$1
+        local PASS="123456"
+        local UHOME="/opt/vsa/files"
+        local USHELL=$sftpserver
+
+	check_group
+	check_user $USER  
+ 
+	echo "Creating new files user account: $USER/$PASS"
+	set_groups
+        $adduser -g $FILES_GROUP -M -d $UHOME -s $USHELL -p $PASS -c "$USER_TAG" $USER
+	reset_passwd $USER $PASS
+}
+
+del_user()
+{
+	local USER=$1
+	if [ $USER == "root" ]; then
+		echo "ERROR: can not delete user 'root'"
+		exit 1
+	fi
+
+	# Validate the user tagged with USER_TAG
+	if ! grep -E "^$USER:.+:$USER_TAG:" /etc/passwd > /dev/null; then
+		echo "No vsa user found"
+		exit 1
+	fi
+	
+	echo "Deleting account: $USER"
+	userdel $USER
+}
+
+check_input()
+{
+	if [ "$1" == "" ]; then
+		usage
+	fi
+	while getopts "m:n:f:d:gk" opt; do
+	  case $opt in
+	    m) new_admin $OPTARG ;;
+	    n) new_user $OPTARG ;;
+	    f) new_files_user $OPTARG ;;
+	    d) del_user $OPTARG ;;
+	    g) set_groups ;;
+	    k) del_groups ;;
+ 	    *) usage ;;
+	  esac
+	done
+}
+
+usage()
+{
+	echo "Usage: $0 option [user]
+
+options:
+	-m user 	new admin user
+	-n user 	new user
+	-f user 	new files user
+	-d user 	del user
+	-g	set vsa groups and shells
+	-k	del vsa groups and shells
+	"
+	exit 1
+}
+
+# Make sure only root can run our script
+if [[ $EUID -ne 0 ]]; then
+   echo "This script must be run as root" 1>&2
+   exit 1
+fi
+
+sftpserver=$(find_sftpserver)
+check_input $@

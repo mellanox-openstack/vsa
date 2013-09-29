@@ -1,0 +1,549 @@
+#!/bin/bash
+
+# Copyright 2013 Mellanox Technologies, Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+vif_name=""
+vlan_tag=""
+pkey=""
+method="dhcp"
+ip=""
+netmask=""
+broadcast=""
+hostname=""
+mtu=""
+bonding=0
+device_name=""
+bond_primary_slave=""
+bond_slaves[0]=""
+num_of_bond_ifaces=0
+bond_mode=""
+
+libdir="`dirname $0`"
+. $libdir/functions
+
+usage()
+{
+	echo "flags:"
+	echo "--vif-name [name]	- the name of the interface - mandatory."
+	echo "--vlan [vlan tag]	- the tag number of the vlan."
+	echo "--pkey [pkey]		- partition key."
+	echo "--method [dhcp/static]	- default dhcp"
+	echo "--ip [ip address]	- only mandatory for static method"
+	echo "--netmask [address]	- only mandatory for static method"
+	echo "--broadcast [address]	- only mandatory for static method"
+	echo "--mtu [mtu size]"
+	echo "--bonding <balance-rr/active-backup/balance-xor/broadcast/802.3ad/balance-tlb/balance-alb>"
+	echo "--slaves IF0 IF1 ... IFn  - list of slave interfaces. The first one specified will be used as primary one"
+}
+
+
+get_params()
+{
+	while [ ! -z $1 ]
+	do
+		case $1 in
+		"--vif-name")
+			vif_name=$2
+			shift 2
+			;;
+		"--vlan")
+			vlan_tag=$2
+			shift 2
+			;;
+		"--pkey")
+			pkey=$2
+			shift 2
+			;;
+		"--method")
+			method=$2
+			shift 2
+			;;
+		"--ip")
+			ip=$2
+			shift 2
+			;;
+		"--netmask")
+			netmask=$2
+			shift 2
+			;;
+		"--broadcast")
+			broadcast=$2
+			shift 2
+			;;
+		"--hostname")
+			hostname=$2
+			shift 2
+			;;
+		"--mtu")
+			mtu=$2
+			shift 2
+			;;
+		"--bonding")
+			bonding=1
+			shift 1
+			get_bond_mode $@
+			shift 1
+			;;
+		"--slaves")
+			shift 1
+			get_slaves $@
+			shift $?
+			;;
+		*|"")
+			usage
+			exit -1
+			;;
+		esac
+	done
+
+	if [ ! -z $vlan_tag ]
+	then
+		case $OS in
+			suse) device_name=vlan${vlan_tag} ;;
+			redhat) device_name=$vif_name.${vlan_tag} ;;
+		esac
+	elif [ ! -z $pkey ]
+	then
+		device_name=$vif_name.$pkey
+	else
+		device_name=$vif_name
+	fi
+}
+
+get_bond_mode() {
+    case "${1}" in
+	"balance-rr")    bond_mode=0;;
+	"active-backup") bond_mode=1;;
+	"balance-xor")   bond_mode=2;;
+	"broadcast")     bond_mode=3;;
+	"802.3ad")       bond_mode=4;;
+	"balance-tlb")   bond_mode=5;;
+	"balance-alb")   bond_mode=6;;
+	*)
+	    echo "bonding mode illegal"
+	    exit -1
+	    ;;
+	esac
+}
+
+get_slaves() {
+	local slaves="$@"
+	slaves=${slaves%%\-\-*}
+	set -- $slaves
+	num_of_bond_ifaces=$#
+	bond_primary_slave=$1
+	shift
+	bond_slaves=($@)
+	return $num_of_bond_ifaces
+}
+
+params_test()
+{
+	if [ -z $1 ]
+	then
+		echo "FAILED!"
+		exit -1
+	fi
+}
+
+#param: ip address
+check_ip() {
+        local  ip=$1
+        local  stat=1
+
+        if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+                OIFS=$IFS
+                IFS='.'
+                ip=($ip)
+                IFS=$OIFS
+                [[ ${ip[0]} -le 255 && ${ip[1]} -le 255 \
+                && ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
+                stat=$?
+        fi
+        return $stat
+}
+
+check_params()
+{
+	local stat
+
+	if [ -z "$vif_name" ]
+	then
+		usage
+		exit -1
+	fi
+
+	if [ "$method" == static ]
+	then
+		check_ip $ip
+		stat=$?
+		if [ $stat -ne "0" ]
+		then
+			echo "illigal ip address"
+			exit $stat
+		fi
+
+		check_ip $netmask
+		stat=$?
+                if [ $stat -ne "0" ]
+                then
+                        echo "illigal netmask address"
+                        exit $stat
+                fi
+
+		check_ip $broadcast
+		stat=$?
+                if [ $stat -ne "0" ]
+                then
+                        echo "illigal broadcast address"
+                        exit $stat
+                fi
+	fi
+
+	if [ ! -z $pkey ] && [ ! -z $vlan_tag ]
+	then
+		echo "can't configure both vlan and pkey"
+		exit -1
+	fi
+
+	if [ "$method" != dhcp ] && [ "$method" != static ]
+	then
+		echo "illigal method"
+		exit -1
+	fi
+}
+
+# from redhat /etc/sysconfig/network-scripts/network-functions
+check_device_down ()
+{
+    if echo $1 | grep -q ':' ; then
+     if LC_ALL=C ifconfig -a 2>/dev/null | grep -q $1 ; then
+          return 1
+     else
+          return 0
+     fi
+    else
+     if LC_ALL=C ip -o link 2>/dev/null | grep -q "$1[:@].*,UP" ; then
+        return 1
+     else
+        return 0
+     fi
+    fi
+}
+
+# check if ip is used not by $device_name
+check_used_ip()
+{
+	local ip=$1
+	local dv=$device_name
+
+	: check used ip $ip , $dv
+
+	if LC_ALL=C ip -o addr 2>/dev/null | grep -v "$dv[:@ ]" | grep -q "$ip" ; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+# return codes:
+# 0 -
+# 1 - needs reset (eg, ifdown & ifup)
+# 2 - can be changed
+# 3 - 
+# 4 - ip is being used
+compare_vif()
+{
+        local network_script=$1
+
+        local ipadr=`awk -F"=" /IPADDR=/{'print $2'} $network_script`
+        local bootp=`awk -F"=" /BOOTPROTO=/{'print $2'} $network_script`
+        local ntm=`awk -F"=" /NETMASK=/{'print $2'} $network_script`
+        local brdcst=`awk -F"=" /BROADCAST=/{'print $2'} $network_script`
+	#local mmtu=`awk -F"=" /MTU=/{'print $2'} $network_script`
+	#local mmtu=`ifconfig ib0 | grep -i mtu | cut -d : -f 2 | cut -d" " -f 1`
+
+	if [ -n "$ip" ]; then
+		: check used ip
+		(check_used_ip $ip) && return 4
+	fi
+
+	: check device down
+	(check_device_down $device_name) && return 1
+
+	: check method
+        if [ $method != $bootp ]; then
+                return 1
+        fi
+
+	: check broadcast
+        if [ "$broadcast" != "$brdcst" ] || [ "$ip" != "$ipadr" ] || [ "$netmask" != "$ntm" ]; then
+                return 2
+        fi
+
+	: check mtu
+	if [ ! -z $mtu ]; then
+		return 3
+	fi
+
+        return 0
+}
+
+create_vif()
+{
+	local network_script=$1
+
+	reset=false
+	if [ -f $network_script ]; then
+		compare_vif $network_script
+		case $? in
+		  1)
+			reset=true
+			;;
+		  2)
+			reset=false
+			ll="ifconfig $device_name netmask $netmask broadcast $broadcast "
+			if [ ! -z $mtu ]; then
+                		ll+=" mtu $mtu"
+       			fi
+			ll+=$ip
+			eval $ll
+			;;
+		  4)
+			# ip is being used
+			return 1
+			;;
+		esac
+	fi
+
+	echo "DEVICE=$device_name" > $network_script
+	echo "ONBOOT=yes" >> $network_script
+	echo "BOOTPROTO=$method" >> $network_script
+	if [ "$method" == static ]
+	then
+		echo "IPADDR=$ip" >> $network_script
+		echo "NETMASK=$netmask" >> $network_script
+		echo "BROADCAST=$broadcast" >> $network_script
+	fi
+	if [ ! -z $vlan_tag ]
+	then
+		echo "VLAN=yes" >> $network_script
+		#echo "VLAN_NAME_TYPE=VLAN_PLUS_VID_NO_PAD" >> $network_script
+		# On SuSE vlan device MUST be named in the form vlanXXX, where
+		# XXX is vlan number, and it master device should be specified
+		# in configuration file as ETHERDEVICE
+		case $OS in
+			suse)
+				echo "ETHERDEVICE=$vif_name" >> $network_script
+				;;
+			redhat)
+				echo "PHYSDEV=$vif_name" >> $network_script
+				;;
+		esac
+	fi
+
+	if [ ! -z $mtu ]
+	then
+		echo "MTU=$mtu" >> $network_script
+	fi
+
+	if [ ! -z $pkey ]
+	then
+		echo 0x$pkey > /sys/class/net/$vif_name/create_child
+	fi
+
+	if [ $reset == true ]; then
+		ifdown $device_name
+		ifup $device_name
+		return $?
+	fi
+
+	return 0
+}
+
+create_bonding()
+{
+	#check for interfaces existance.
+	local num_of_secondary_slaves=`expr $num_of_bond_ifaces - 1`
+	if [ ! -e /sys/class/net/$bond_primary_slave ]
+	then
+		echo "$bond_primary_slave: no such network interface"
+		exit -1
+	fi
+
+	local i=0
+	while [ $i -lt $num_of_secondary_slaves ]
+	do
+		if [ ! -e /sys/class/net/${bond_slaves[$i]} ]
+		then
+			echo "${bond_slaves[$i]}: no such network interface"
+			exit -1
+		fi
+		i=`expr $i + 1`
+	done
+
+#	if [ -e /sys/class/net/$vif_name ]
+#	then
+#		echo "$vif_name already exists"
+#		exit -1
+#	fi
+
+#actual creation of bonding
+	#update modprobe.conf
+	echo "# UFMA:$vif_name" >> /etc/modprobe.conf
+	echo "alias $vif_name bonding" >> /etc/modprobe.conf
+
+	#write the network scripts:
+	
+        create_vif "${netscriptdir}/ifcfg-$device_name"
+	case $OS in
+		redhat)
+			create_redhat_bond ${netscriptdir}/ifcfg-$device_name
+			;;
+		suse)
+			create_suse_bond ${netscriptdir}/ifcfg-$device_name
+			;;
+	esac
+}
+
+create_redhat_bond()
+{
+	local network_script=$1
+
+	echo "TYPE=Bonding" >> $network_script
+
+	#replace BOOTPROTO=something with BOOTPROTO=none
+	local bootproto_line=`grep -n BOOTPROTO $network_script | grep -o [0-9]*`
+	if [ ! -z $bootproto_line ]
+	then
+		sed -i $bootproto_line'd' $network_script
+	fi
+
+	echo "BOOTPROTO=none" >> $network_script
+	echo "BONDING_OPTS=\"mode=$bond_mode primary=$bond_primary_slave miimon=100 max_bonds=10\"" >> $network_script
+
+	#create slaves network scripts
+	local i=-1
+	while [ $i -lt "`expr $num_of_bond_ifaces - 1`" ]
+	do
+		local temp_iface=""
+		if [ $i -eq "-1" ]
+		then
+			temp_iface=$bond_primary_slave
+		else
+			temp_iface=${bond_slaves[$i]}
+		fi
+		
+		network_script=${netscriptdir}/ifcfg-$temp_iface
+		echo "DEVICE=$temp_iface" > $network_script
+		echo "SLAVE=yes" >> $network_script
+		echo "MASTER=$vif_name" >> $network_script
+
+		local type=`cat /sys/class/net/$bond_primary_slave/type`
+		if [ $type -eq "32" ]
+		then
+			echo "TYPE=InfiniBand" >> $network_script
+		else
+			echo "Type=Ethernet" >> $network_script
+		fi
+
+		i=`expr $i + 1`
+	done
+}
+
+create_suse_bond()
+{
+	local network_script=$1
+
+	echo "TYPE=Bonding" >> $network_script
+
+	#replace BOOTPROTO=something with BOOTPROTO=none
+	local bootproto_line=`grep -n BOOTPROTO $network_script | grep -o [0-9]*`
+	if [ ! -z $bootproto_line ]
+	then
+		sed -i $bootproto_line'd' $network_script
+	fi
+
+	echo "BOOTPROTO=none" >> $network_script
+	echo "BONDING_MASTER=yes" >> $network_script
+	echo "BONDING_MODULE_OPTS=\"mode=$bond_mode primary=$bond_primary_slave miimon=100 max_bonds=10\"" >> $network_script
+	
+	local i=-1
+	while [ $i -lt "`expr $num_of_bond_ifaces - 1`" ]
+	do
+		local temp_iface=""
+		if [ $i -eq "-1" ]
+		then
+			temp_iface=$bond_primary_slave
+		else
+			temp_iface=${bond_slaves[$i]}
+		fi
+	
+		local next=`expr $i + 1`
+		echo "BONDING_SLAVE$next=$temp_iface" >> $network_script
+
+		i=`expr $i + 1`
+	done
+
+	#create slaves network scripts
+	i=-1
+	while [ $i -lt "`expr $num_of_bond_ifaces - 1`" ]
+	do
+		local temp_iface=""
+		if [ $i -eq "-1" ]
+		then
+			temp_iface=$bond_primary_slave
+		else
+			temp_iface=${bond_slaves[$i]}
+		fi
+		
+		network_script=${netscriptdir}/ifcfg-$temp_iface
+		echo "DEVICE=$temp_iface" > $network_script
+		echo "SLAVE=yes" >> $network_script
+		echo "MASTER=$vif_name" >> $network_script
+		echo "BOOTPROTO='none'" >> $network_script
+		echo "STARTMODE='off'" >> $network_script
+		echo "PRE_DOWN_SCRIPT=/etc/sysconfig/network/unenslave.sh" >> $network_script
+
+		local type=`cat /sys/class/net/$bond_primary_slave/type`
+		if [ $type -eq "32" ]
+		then
+			echo "TYPE=InfiniBand" >> $network_script
+		else
+			echo "Type=Ethernet" >> $network_script
+		fi
+
+		i=`expr $i + 1`
+	done
+}
+
+main()
+{
+	get_params $@
+	check_params
+
+	if [ $bonding -eq "1" ]
+	then
+		create_bonding
+		exit 0
+	fi
+
+	create_vif ${netscriptdir}/ifcfg-$device_name
+}
+
+main $@
+

@@ -1,0 +1,107 @@
+	performance tuning guide for working with VSA exported disks
+				March 2011
+
+On the initiator side (Linux)
+----------------------------
+
+1. set the IO scheduler to be "noop", verify success:
+
+	# echo noop > /sys/block/<dev>/queue/scheduler
+	# cat /sys/block/<dev>/queue/scheduler
+		[noop] anticipatory deadline cfq
+
+where <dev> is a disk exported through iscsi/iser
+
+2. use O_DIRECT (Direct IO) and/or AIO (Asynchronous IO) for disk access
+
+On the target side
+------------------
+
+1. when working with Linux initiators 
+
+ 1.1 use iser as the target transport
+
+2. when working with Windows/VMware iscsi/tcp initiators 
+
+ 2.1 set the iscsi session options of MaxRecvDataSegmentLength and 
+     MaxXmitDataSegmentLength to 64k, this can be done globally or per target
+
+globally	# set iscsiopt Key1=Value1;Key2=Value2;...
+per target	# set targets/TIQN/iscsiopt Key1=Value1;Key2=Value2;...
+
+	e.g 
+	# set iscsiopt MaxRecvDataSegmentLength=65536;MaxXmitDataSegmentLength=65536
+
+	or 
+	# set targets/iqn.d0/iscsiopt MaxRecvDataSegmentLength=65536;MaxXmitDataSegmentLength=65536
+
+Note: global setting will also effect iser targets, so if both iser 
+and tcp iscsi targets are used, per target setting is preferred.
+
+Note: to see the various iscsi options and the default values the target
+uses for them, do "help iscsiopt" in the VSA CLI.
+
+Note: the iscsi session options are negotiated between the initiator
+and the target, hence the initiator has to offer values which are at 
+least as big as (say) 64K. Initiator stacks have the means for the
+user to specify this setting. With VMWare/Windows there is a menu/dialog
+box for doing these specifications. The linux initiator has config file
+(e.g /etc/iscsi/iscsid.conf) to set this.
+
+Note: if the targets are connected at the time of changing the default
+setting, make sure to reconnect from the initiator to have these settings
+take effect.
+
+ 2.2 with IPoIB, set the VSA node NIC/s to datagram mode, make sure TCP offloads are enabled 
+	# /opt/vsa/IB_datagram.sh <ipoib-nic>
+	# ethtool -k <ipoib-nic>
+
+	where <ipoib-nic> is an IPoIB NIC, such as ib0, ib1, ib0.8001, etc
+
+ 2.3 with IPoIB, consider setting the IPoIB module to use LRO 
+
+note that 1 && 2 are not mutual exclusive as different targets may 
+be configured to different initiators	
+
+3. to max single initiator performance, spread the luns such that each lun 
+or small group of luns are exported by different iscsi/iser targets
+
+4. to max IOPS, use M>1 (e.g M=2) tgt instances and spread the luns among them
+
+Multiple instances are supported by the VSA management suite as for version
+2.0. See section "1.4.1 Multiple Target Instances and IO Threads" at the VSA
+readme to learn how to configure, work and do discovery with multiple instances.
+
+5. use O_DIRECT for the VSA target LUN access to the underlying block device
+
+VSA will always attempt to work with Direct IO
+
+6. consider increasing the number of IO threads per lun
+
+See section "1.4.1 Multiple Target Instances and IO Threads" at the VSA
+readme to learn how to configure that
+
+7. Apply some CPU affinity policy among the tgtd process/es and possible
+some other CPU consumers on the VSA node (e.g SSD "groomer" threads).
+
+crash performance debugging guide-lines
+---------------------------------------
+
+1. many times (typically), one would like to see the performance at least
+in these four levels
+
+R1 - local results with the micro-benchmark (e.g disktest, fio, xdd, etc)
+R2 - remote results with "ib_send_bw -a" to see BW for all packets sizes
+R3 - remote/iser results with the luns being null based with the micro-benchmark
+R4 - remote/iser results with the luns being the actual disks with the micro-benchmark
+
+2. use monitoring in various levels (e.g ib/target/block) at the VSA side and
+   also iostat(1) on the initiator side
+
+3. use multiple M>1 number of initiators, e.g M=2, to make sure you don't hit a 
+perf bottleneck on the initiator side. 
+
+Note: patches that improve the IOPS for the initiator were pushed to RHEL 5.6 
+and 6.0, if you use older distros, approach the VSA support to get updated 
+initiator module.
+

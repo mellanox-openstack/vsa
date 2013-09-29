@@ -1,0 +1,136 @@
+#!/bin/bash
+
+PROGNAME=$0
+
+INSTALL_LOG="/tmp/vsa-install.log"
+INSTALL_DIR="/opt/vsa/"
+
+err() {
+	echo -e "\nERROR: $1\n" 1>&2
+	exit 1
+}
+
+warn() {
+	echo -e "\nWARNING: $1\n"
+}
+
+fin() {
+	echo -e "\n$1\n"
+	exit 0
+}
+
+trim() {
+	echo $*
+}
+
+stderr() {
+	echo $* >&2
+}
+
+selinux_status() {
+	selinuxenabled && [ `getenforce` != "Permissive" ] && echo "Warning: SELinux is enabled in enforcing state. some functionally might not work properly."
+}
+
+freshen_packages=""
+
+filter_install_packages() {
+    local fl=""
+    local nl=""
+    for p in $packages ; do
+        if `rpm_installed $p`; then
+            fl+=" $p"
+        else
+            nl+=" $p"
+        fi
+    done
+    packages=`trim $nl`
+    freshen_packages+="$fl"
+}
+
+# filter lists to whats installed
+filter_un_lists() {
+	for i in $rpms_lists ; do
+		l=${!i}
+		nl=""
+		for p in $l ; do
+			nl+=" `if_installed $p`"
+		done
+		eval "${i}=\"`trim $nl`\""
+	done
+}
+
+# $1 rpm file or name
+# return 0 if installed, 1 if not
+rpm_installed() {
+	local n=`package_name $1`
+	local c
+	rpm -q --quiet $n
+	c=$?
+	return $c
+}
+
+# $1 rpm file or name
+# return name
+package_name() {
+	local p
+	if [ -f $1 ]; then
+		rpm -qp --nosignature $1 --qf "%{NAME}\n"
+	else
+		p=${1##*/}
+        p=${p%.rpm}
+		echo $p
+	fi
+}
+
+# return $1 if not installed
+if_not_installed() {
+	local p r
+	p=`package_name $1`
+	rpm -q --quiet $p
+	r=$?
+	if [[ $r != 0 ]]; then
+		echo $1
+	fi
+}
+
+# return package name if installed
+if_installed() {
+	local p r
+	p=`package_name $1`
+	rpm -q --quiet $p
+	r=$?
+	if [[ $r == 0 ]]; then
+		echo $p
+	fi
+}
+
+service_status() {
+	service $1 status > /dev/null 2>&1
+	return $?
+}
+
+log() {
+	local tag data
+	tag=$1
+	data=$2
+	echo "$tag $data" >> $INSTALL_LOG
+}
+
+move_log() {
+	mv -f $INSTALL_LOG $INSTALL_DIR
+}
+
+log_files() {
+	local tag i l
+	tag=$1
+	for i in ${@:2}; do
+		log install `basename $i`
+	done
+}
+
+installed_log=${INSTALL_DIR}${INSTALL_LOG##*/}
+vsacli_was_installed=`rpm -q --quiet vsacli && echo true`
+machine=$(uname -m)
+kernel_version=$(uname -r)
+ker_ver=${kernel_version%%.$machine}
+short_ker_ver=$(echo $ker_ver | grep -E -o "^[0-9.]+-[0-9]*")

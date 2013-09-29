@@ -1,0 +1,338 @@
+
+
+OS="undefined"
+
+
+get_os() {
+	if [ -e /etc/redhat-release ];then
+		OS="redhat"
+	elif [ -e /etc/SuSE-release ];then
+		OS="suse"
+	elif [ -e /etc/switch-release ];then
+		OS="ibswitch"
+	elif [ -e /etc/vos/config/systemConfig.ini ];then
+		OS="ceeswitch"
+	else
+		echo "Can't define OS type"
+		exit 1
+	fi
+}
+
+get_os
+
+case ${OS} in
+	suse)
+		netscriptdir=/etc/sysconfig/network
+		;;
+	redhat)
+		netscriptdir=/etc/sysconfig/network-scripts
+		;;
+	ceeswitch|ibswitch)
+		netscriptdir=unknown
+		;;
+	*)
+		echo "Can't obtain operation system name"
+		exit 1
+		;;
+esac
+
+case ${OS} in
+	suse|redhat)
+		if [ ! -d  ${netscriptdir} ];then
+			echo "Unable to find network script directory"
+			exit 1
+		fi
+		;;
+	*)
+		/bin/true ;;
+esac
+
+case "$OS" in
+#################################
+# SuSE/RedHat functions
+#################################
+	suse|redhat)
+get_disks_info() {
+	while read line; do
+		[ 0${line} == 0 ] && continue
+		local dev_name=`echo $line | cut -d',' -f1`
+		local size=`df -B M $dev_name | tail -n 1 | awk '{print $2}' | grep -o [0-9]*`
+		local system=`echo $line | cut -d',' -f6-20 | tr ',' ' '`
+		local mount_point=`mount | grep $dev_name | awk '{print $3}'`
+		if [ -z $mount_point ]
+		then
+			mount_point="-"
+		fi
+
+		ret="$ret,disk,4,name=$dev_name,size=$size,system=$system,mount_point=$mount_point"
+		
+	done < <(fdisk -l | sed '/^\/dev\//!d;s/\*//g;s/[ \t]\+/,/g')
+}
+#_get_ipmi_addr()
+#{
+#	local ipmi_ip=`$current_dir/update-ipmi --get-ip 2<&1`
+#
+#	general_info="ipmi_ip=$ipmi_ip,$general_info"
+#}
+get_cpu_info()
+{
+	local arch=`uname -p`
+	if [ "$arch" == ppc64 ] || [ "$arch" == ppc32 ]
+	then
+		local freq=`cat /proc/cpuinfo | grep "MHz" | awk '{print $3}' | grep -o [0-9]* | head -n 1`
+	else
+		local freq=`cat /proc/cpuinfo | grep "MHz" | awk '{print $4}' | head -n 1`
+	fi
+	local num_of_cores=`cat /proc/cpuinfo | grep processor | wc -l`
+
+	ret="$ret,cpu,3,cpu_type=$arch,cpu_speed=$freq,cpu_num=$num_of_cores"
+}
+
+	;;
+#################################
+# Switch functions
+#################################
+	ibswitch|ceeswitch|*)
+get_disks_info() { 
+	ret="$ret,disk,4,name=unknown,size=unknown,system=unknown,mount_point=unknown"
+}
+
+#_get_ipmi_addr() {
+#	general_info="ipmi_ip=unknown,$general_info"
+#}
+
+get_cpu_info() { 
+	case $OS in
+		ibswitch)
+			freq=`awk -F ":" '/^clock/ {print int($2)}' < /proc/cpuinfo` ;;
+	*)
+			freq=unknown ;;
+	esac
+	ret="$ret,cpu,3,cpu_type=ppc,cpu_speed=$freq,cpu_num=1"
+}
+	;;
+esac
+
+
+##################################
+# Common functions
+##################################
+
+get_mem_info()
+{
+	local size
+	size=`awk '/^MemTotal/ {print int($2/1024)}' /proc/meminfo`
+	if [ "0$size" = 0 ];then
+		size="unknown"
+	fi
+	ret="$ret,memory,1,ram=$size"
+}
+
+
+get_subtype() {
+	case $OS in
+		suse|redhat) echo host ;;
+		ibswitch|ceeswitch) echo switch ;;
+		*)	echo unknown; return 1;;
+	esac
+	return 0
+}
+#Set debug to 1, if you don't want to execute system commands,but
+#just "echoing" them
+do_system() {
+	local debug=0
+	local prefix
+	if [ ${debug} -eq 1 ];then
+		prefix="echo "
+	fi
+	${prefix} $@
+	return $?
+}
+
+find_childs() {
+	local master=${1}
+	local list
+	local dev
+	pushd  ${netscriptdir} >/dev/null 2>&1	
+		for cfg in `ls ifcfg-* 2>/dev/null`;do
+			eval dev=$( . ${cfg} ; [ 0$MASTER = 0${master} ] && echo ${DEVICE} )
+			[ 0${dev} != 0 ] && list="${list} ${dev}"
+		done
+	pushd  ${netscriptdir} >/dev/null 2>&1	
+	echo ${list}
+}
+
+stop_netdev() {
+	local dev=$1
+	local realdev
+	if [ -e /proc/net/vlan/$1 ];then
+		case $OS in
+			suse)
+				do_system ifdown ${1}
+				return $?
+				;;
+			redhat)
+				realdev=`awk '/^Device/ {print $2}' < /proc/net/vlan/$1`
+				echo ${dev}@${realdev}
+				;;
+		esac
+	fi
+	do_system ifdown ${dev}
+	return $?
+}
+
+delete_single_netdev() {
+	. ${netscriptdir}/ifcfg-${1}
+	local arr
+	local reterr=0
+	case ${TYPE} in
+		Bonding)
+			echo "This is bond device, not stopping network."
+			do_system ifconfig bond0 0
+			do_system ifconfig bond0 down
+			do_system rm -f ${netscriptdir}/ifcfg-${1}
+			reterr=$?
+			return $reterr
+			;;
+		InfiniBand)
+			OIFS=$IFS
+			IFS='.'  arr=($DEVICE)
+			IFS=$OIFS
+			echo ${arr[@]}
+			if [ ${#arr[@]} -eq 2 ];then
+				do_system echo 0x${arr[1]} > /sys/class/net/${arr[0]}/delete_child >/dev/null 2>&1
+				reterr=1
+			fi
+				do_system rm -f ${netscriptdir}/ifcfg-${1}
+			return $reterr
+			;;
+	esac	
+	stop_netdev ${1}
+	reterr=$(( $reterr | $? ))
+	do_system rm -f ${netscriptdir}/ifcfg-${1}
+	reterr=$(( $reterr | $? ))
+}
+
+#Function get one neccessary arguments and optional - childs to be deleted
+#If only master was specified all child interfaces will be deleted
+delete_child() {
+	local master=${1}
+
+	if [ $# -ne 1 ];then
+		# Child specified on command line
+		shift
+		childs="$@"
+	else
+		childs=$(find_childs ${master})
+	fi
+	for ch in ${childs};do	
+		delete_single_netdev ${ch}
+	done
+}
+
+cecho ()                     # Color-echo.
+                             # Argument $1 = message
+                             # Argument $2 = color
+{
+     local default_msg="No message passed."
+                                       # Doesn't really need to be a local variable.
+
+          message=${1:-$default_msg}   # Defaults to default message.
+          color=${2:-$black}           # Defaults to black, if not specified.
+
+        echo -e "$color$message"
+        tput sgr0
+return
+}
+
+failure() {
+  echo "FAILURE";
+  if test "x$1" != "x"; then
+    echo "$1";
+  fi
+  echo "$2  Aborting.";
+  exit 1;
+}
+
+
+# Arguments: <protocol> <path> <output file> [ip] [user] [password]
+get_file() {
+	local proto=$1 path=$2 output=$3 ip=$4 user=$5 pass=$6
+	if [ 0"${path}" = 0 ];then
+		return 1
+	fi
+	case $proto in
+		ftp)
+			if [ 0$ip == 0 ] ;then echo "IP or path not specified"; exit 1; fi
+			wget -t 3  -O - --ftp-user "${user}" --ftp-password "${pass}" ftp://$ip/$path > ${output}
+			if [ $? -ne 0 ];then failure "Unable to get file from ftp path $path" ;fi ;;
+		tftp)
+			
+			tftp -v -m binary $ip -c get $path
+			if [ $? -ne 0 ];then failure "Unable to get file from tftp path $path" ;fi ;;
+		file)
+			if [ ! -f $path ];then return 1;fi
+			cat $path > "${output}" 
+			if [ $? -ne 0 ];then failure "Unable to get file from file path $path" ;fi ;;
+		*)
+			echo "Unknown protocol: ${proto}"; exit 1;;
+	esac
+}
+
+pciid_to_num() {
+	local pciid=${1}
+	set -- $(IFS=":."; echo $pciid)
+	pciid=$(( ( 0x$1 << 16 ) | ( 0x$2 << 8 ) | 0x$3 ))
+	echo $pciid
+}
+
+num_to_pciid() {
+	local num=$1
+	local a b c
+	a=$(( ($num & 0xff0000 ) >> 16 ))
+	b=$(( ($num & 0x00ff00 ) >> 8 ))
+	c=$(( $num & 0x0000ff  ))
+	a=`printf "%02x" $a`
+	b=`printf "%02x" $b`
+	c=`printf "%x" $c`
+	echo "$a:$b.$c"
+}
+
+#Find PCI information about parent device
+who_is_papa() {
+	local pciid
+	pciid=`readlink /sys/class/net/${1}/device`
+	pciid=${pciid##*/}
+	set -- $(IFS=":."; echo $pciid)
+	if [ $# -ne 4 ] || [ 0$2$3$4 = 0 ] ;then
+		echo unknown
+		return 1
+	fi
+	echo ${2}:${3}.${4}
+	return 0
+}
+
+
+get_netdev_state() {
+	local dev=$1
+	local state=unknown
+	if [ -e  /sys/class/net/$dev/operstate ];then
+		state=`cat /sys/class/net/$dev/operstate`	
+		echo $state
+		return 0
+	fi
+	echo $state
+	return 1
+}
+
+get_iface_type() {
+	local dev=$1
+	local iftype
+	if [ -e /sys/class/net/$iface/type ];then
+		iftype=`cat /sys/class/net/$iface/type`
+		echo $iftype
+		return 0
+	fi
+	echo $iftype
+	return 1
+}

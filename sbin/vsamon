@@ -1,0 +1,102 @@
+#!/bin/bash
+
+exit_script() {
+        $logger_cmd "stop monitoring..."
+        exit 0
+}
+
+internal_log() {
+        local STRING stamp str
+
+        STRING=$1
+        stamp=$(date "+%X %x")
+        str="$stamp [vsa_monitor] $STRING"
+        echo $str
+        echo $str >> $log_file
+}
+
+# Make sure only root can run our script
+if [[ $EUID -ne 0 ]]; then
+   echo "This script must be run as root" 1>&2
+   exit 1
+fi
+
+pid_exists() {
+        local p=$1
+        if [ -d "/proc/$p" ]; then
+                return 0
+        fi
+        return 1
+}
+
+chk_status() {
+        local name=$1
+	local param=$2
+        service $name status $param >/dev/null 2>&1 &
+        local p=$!
+        disown $p
+        local c
+        for c in `seq 10`; do
+                sleep 1
+                if ! `pid_exists $p`; then
+                        break
+                fi
+        done
+	# status is stuck
+        if `pid_exists $p`; then
+                kill -9 $p
+                return 1
+        fi
+	# not stuck but we want to check return code
+	service $name status $param >/dev/null 2>&1
+	return $?
+}
+
+chk_tgtd() {
+	local instances=`grep instances /opt/vsa/vsa.conf| sed "s/.*=\ *//g"`
+	local i=0
+	while ((i<instances)); do
+		if ! `chk_status isertgtd $i`; then
+			$logger_cmd "restarting isertgtd instance $i"
+			service isertgtd restart $i >/dev/null 2>&1
+		fi
+		((i++))
+	done
+}
+
+chk_service() {
+	local name=$1
+	if ! `chk_status $name`; then
+		$logger_cmd "restarting $name"
+		service $name restart >/dev/null 2>&1
+		if [ $? != 0 ]; then
+			$logger_cmd "failed restarting $name"
+		fi
+	fi
+}
+
+chk_vsa() {
+	chk_service vsad
+	local s=`grep "^role=" /opt/vsa/vsa.conf | cut -d"=" -f2`
+	if [ "$s" == "standalone" ]; then
+		chk_service vsasrv
+	fi
+}
+
+############## START #############
+# set logger command
+logger_cmd="logger -t vsa_monitor"
+#logger_cmd=internal_log
+log_file="/opt/vsa/files/log/monitor.log"
+interval=8
+
+$logger_cmd "start monitoring..."
+
+# register signals
+trap exit_script SIGINT SIGTERM
+
+while true; do
+	chk_tgtd
+	chk_vsa
+	sleep $interval
+done

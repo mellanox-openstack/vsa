@@ -1,0 +1,6 @@
+#!/bin/bash
+
+if [ ! -e ~/.ssh/id_dsa.pub ]; then
+	ssh-keygen -q -f ~/.ssh/id_dsa -N "" -t dsa
+fi
+cat ~/.ssh/id_dsa.pub

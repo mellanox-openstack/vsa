@@ -1,0 +1,12 @@
+size 1M
+rotate 5
+missingok
+notifempty
+copytruncate
+compress
+
+/opt/vsa/files/log/vsad.console.log {
+}
+
+/opt/vsa/files/log/vsasrv.console.log {
+}

@@ -1,0 +1,92 @@
+button .ui-icon {
+    width: 20px;
+    height: 20px;
+    margin-top: -10px !important;
+}
+
+.ui-icon-error {
+	background: url(../icons-vsa/critical-small.gif) no-repeat !important;
+}
+
+.ui-icon-running {
+	background: url(../icons-vsa/normal-small.gif) no-repeat !important;
+}
+
+.ui-icon-refresh-tree {
+	background: url(../icons-vsa/toolbar/refresh.png) no-repeat !important;
+}
+
+.ui-icon-rescan {
+	background: url(../icons-vsa/toolbar/rescan.png) no-repeat !important;
+}
+
+.ui-icon-reboot {
+	background: url(../icons-vsa/toolbar/reboot.png) no-repeat !important;
+}
+
+.ui-icon-evacuate {
+	background: url(../icons-vsa/toolbar/evacuate.png) no-repeat !important;
+}
+
+.ui-icon-addtotarget {
+	background: url(../icons-vsa/toolbar/toTarget.png) no-repeat !important;
+}
+
+.ui-icon-monitor {
+	background: url(../icons-vsa/toolbar/monitor.png) no-repeat !important;
+}
+
+.ui-icon-migrate {
+	background: url(../icons-vsa/toolbar/migrate.png) no-repeat !important;
+}
+
+.ui-icon-add-disk {
+	background: url(../icons-vsa/toolbar/add_disk.png) no-repeat !important;
+}
+
+.ui-icon-addtopool {
+	background: url(../icons-vsa/toolbar/add_pool.png) no-repeat !important;
+}
+
+.ui-icon-add-vol {
+	background: url(../icons-vsa/toolbar/add_volume.png) no-repeat !important;
+}
+
+.ui-icon-addtoraid {
+	background: url(../icons-vsa/toolbar/add_raid.png) no-repeat !important;
+}
+
+.ui-icon-maptoclnt {
+	background: url(../icons-vsa/toolbar/add_lun.png) no-repeat !important;
+}
+
+.ui-icon-add {
+	background: url(../icons-vsa/toolbar/add.gif) no-repeat !important;
+}
+
+.ui-icon-edit-target {
+	background: url(../icons-vsa/tasks_properties.gif) no-repeat !important;
+}
+.ui-icon-delete {
+	background: url(../icons-vsa/toolbar/delete.png) no-repeat !important;
+}
+
+.ui-icon-help1 {
+	background: url(../icons-vsa/help.png) no-repeat !important;
+    position: relative;
+    float: right;
+	width: 20px !important;
+	height: 18px !important;
+}
+
+.tab-icon {
+    border: none;
+}
+
+.ui-icon-expand-tree {
+    background: url(../icons-vsa/ExpandAll.png) no-repeat !important;
+}
+
+.ui-icon-collapse-tree {
+    background: url(../icons-vsa/CollapseAll.png) no-repeat !important;
+}

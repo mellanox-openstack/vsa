@@ -1,0 +1,275 @@
+Flashcache usage and testing guidelines
+=======================================
+
+Table of Contents
+-----------------
+
+1. Configuration guidelines
+---------------------------
+1.1. Format SSD with the same sector size as the cache block size in use.
+1.2. Create cache with the block size corresponding to the smallest
+     typical write i/o size
+1.3. Use "deadline" i/o scheduler
+1.4. Tuning i/o behaviour
+1.4.1. Setting i/o scheduler type
+1.4.2. Tuning read-ahead
+1.4.3. Buffering i/o requests
+
+2. Testing guidelines
+---------------------
+2.1. While testing IOPs use requests equal to the cache block size
+2.2. Use size-based I/O runs to get the cache warm
+2.3. Demonstrating the warming effect     
+     
+3. Theoretical analysis
+-----------------------
+3.1. Hit-miss ratio influence on cache performance
+
+***
+
+1. Configuration guidelines
+
+1.1. Format SSD with the same sector size as the cache block size in use.
+
+Until recently, flashcache forced us to format ssd to 512 byte sectors,
+because it performed its metadata IO as 512 sectors. Afther this limitation
+was relaxed, ssd can be formatted to any sector size. The best performance,
+though, should be attained at the sector size coinciding with the cache
+block size. In this case all IOs (both data and metadata) will be done
+using the same granularity.
+
+See the next section on choosing the cache block size.
+
+Examples:
+
+# fio-detach /dev/fct0
+# fio-format -b 512 -s 60% /dev/fct0 # must for the old versions
+# fio-format -b 4K -s 60% /dev/fct0 # recommended for the newer versions
+# fio-attach /dev/fct0
+
+1.2. Create cache with the block size corresponding to the smallest
+     typical write i/o size
+
+The recommended flashcache block size is 4KB. Flashcache was tested and
+optimized by its developers while using this block size value. 
+
+If the typical i/o size is 4K, there is no need to change it. There are many
+practical cases where this assumptions is mostly true, mainly because the
+file systems tend to deal with 4k pages from the buffer cache. 
+
+If the actually used block size, particularly of the write i/os, is smaller
+than 4k, then a smaller block size should be considered. Flashcache will pass
+any sub-blocksize write i/os directly to the slow disk and treat them as
+uncacheable. When a sub-blocksize read is received, though, a check is made
+for a potential cache hit and the i/o is served from cache in case of a read hit.
+If the application is known to generate small write i/os, in order to avoid
+having them sent directly to the disk, the smallest typical size of such i/o
+should be forced as the cache block size.
+
+Examples:
+
+# flashcache_create -b 4k cache_fiob_sde /dev/fiob /dev/sde
+# flashcache_create -b 1k cache_fiob_sde /dev/fiob /dev/sde
+
+1.3. Use "deadline" i/o scheduler
+
+Linux supports a few i/o schedulers (cfq, deadline, noop). In most cases
+"deadline" scheduler has shown better performance.
+
+Examples:
+
+# echo deadline /sys/block/sdf/queue/scheduler
+
+1.4. Tuning i/o behaviour
+
+1.4.1. Setting i/o scheduler type
+
+With "deadline" i/o scheduler the following available parameters are relevant:
+read_expire - deadline period for read i/o
+write_expire - deadline period for write i/o
+
+Recommended values - TBD.
+
+1.4.2. Tuning read-ahead
+ 
+Presumably, a better practice is to configure read-ahead for the cache mapper
+device itself. Then greater chunks will be brought into cache. 
+
+TBD: this may turn incorrect, if chunks greater than a block are deferred to
+the slower disk !!!
+
+Tuning read-ahead is achieved either through /sys/block/sd*/queue/read_ahead_kb
+or using "blockdev --getra".
+
+Examples:
+
+# cat /sys/block/sde/queue/read_ahead_kb
+# echo 512 > /sys/block/sde/queue/read_ahead_kb
+
+# blockdev --getra /sys/block/sde/queue/read_ahead_kb
+# blockdev --setra 4096 /sys/block/sde/queue/read_ahead_kb 
+
+Recommended values - TBD.
+
+1.4.3. Buffering i/o requests
+
+The size of i/o requests which are buffered before they are sent to the disk
+is controlled using /sys/block/sd*/queue/nr_requests.
+
+We are basically interested in smaller values of this parameter.
+
+Examples:
+
+# echo 64 > /sys/block/sde/queue/nr_requests
+
+
+2. Testing guidelines
+---------------------
+
+2.1. While testing IOPs use requests equal to the cache block size
+
+This is important to avoid uncacheable requests, by the same reasons as in
+the previous topic.
+
+There are reasons to focus on workloads with the blocksizes greater than 4kB
+anyway. If the application uses buffered IO in Linux (without O_DIRECT),
+Linux will issue ios that are PAGESIZE multiples (> 4KB, and a multiple of 4KB).
+Most of the applications that use O_DIRECT (eg MySQL/InnoDB) use blocksizes 
+greater than 4KB (typically 8KB and 16KB).
+
+2.2. Use size-based I/O runs to get the cache warm
+
+When using "fio", --size option will do it. 
+run_io_tests.sh has -s option to the same effect.
+
+Examples:
+
+# ./run_io_tests.sh -d /dev/mapper/cache_fioa_sdb -s 20000 -a fio -i 2 -t 32 -x read -I -b 4
+
+fio --rw=read --bs=4k --numjobs=1 --iodepth=32 --size=1000000k \
+    --loops=1 --ioengine=psync --direct=1 --invalidate=1 --fsync_on_close=1 \
+    --randrepeat=1 --norandommap --group_reporting --exitall \
+    --name cache_fioa_sdb-read-4k-1thr-psync-32io-1000000k_sz \
+    --filename=/dev/mapper/cache_fioa_sdb
+    
+Examples:
+
+# run_io_tests.sh -d /dev/mapper/cache_sdk_sde -t 32 -I -a fio -x read -i 2 -b 4 -s 50000
+...
+/dev/mapper/cache_sdk_sde read, 32 thr, 4 kb - 12 s - R: 127,269K
+
+next run (same cmd line):
+...
+/dev/mapper/cache_sdk_sde read, 32 thr, 4 kb - 9 s - R: 156,328K
+
+Explanation:
+
+This is achieved by using -s argument. If running run_io_tests.sh with time-based
+runs (with -l), then the first runs will be the slowest (cache is warming) so during
+the same time period less data is brought to the cache. So the consecutive runs
+will start faster and then exhaust the blocks already in cache and the performance
+will drop suddenly.
+
+If you use size-based runs, then the first ones will be longer and the next ones
+shorter, showing consistently better performance.
+
+If randrepeat=1 is used with fio, this is right not only for sequential i/os,
+so the pattern should be repeated between runs.
+
+2.3 Demonstrating the warming effect
+
+The overal scenario for this kind of testing is as follows:
+
+a. Create a relatively large cache 
+b. Read (size-based) less than cache-size, either sequential or random (with randrepeat=1).
+   You should see low performance, stat shows 0 read hits.
+c. Repeat the test with the same size and pattern, performance should go up, while
+   stat is showing high read hits.
+     
+2.4. Demonstrating the evictions effect
+
+TBD
+
+
+3. Theoretical analysis
+-----------------------
+
+3.1. Hit-miss ratio influence on cache performance
+
+A simple formula can be used to assess the impact of the number of
+misses and hits in cache. 
+
+Let's assume there are 2 devices, slow and fast (cache), and that
+all currently issued I/O requests are of the same size.
+S = average throughput of the slow device
+F = another throughput of the fast device
+both in the same usnits, say in Mb/s.
+
+Let's view all IOs as either misses or hits,
+m = the ratio of misses
+h = the ratio of hits
+m + h = 1
+
+To simplify, let's ignore overheads related to sequentialized execution
+of IOs on both devices (on read misses : read from slow then write to fast;
+on waiting for cache replacements : write to slow then write to fast),
+assuming that hit is just access to fast , miss is an access to slow.
+
+Now, if we are reading X Mb, hX will be processed as hits and mX as misses.
+Read hits take the time required to read from the fast device: hX/F.
+Read misses take the time needed to read from the slow device and write 
+to the fast device: mX/S+ mX/F
+
+Overall time: 
+T = hX/F + mX/F + mX/S = X/F + mX/S
+
+The resulting throughput R will be:
+R = X/T = 1 / (1/F + m/S) = FS / (S + mF)
+
+The resulting formula is:
+
+    R = FS / (S + mF)
+
+Note that the predictive value of this formula is rather low, because,
+in practical terms, we are usually interested in prediction of the performance
+given an i/o pattern.
+
+The problem is that the difficult part of such model is predicting
+the hit/misses ratio arising from the i/o pattern.
+
+It helps though to see how different qualitative regimes influence the performance.
+
+In trivial cases, if m=0 then R=F (all hits no misses go thru the fast device),
+and if m=1 then R=FS/(S+F) (usually F>>S then R is almost S, even R<S).
+
+So while misses increase from 0 to 100%, the resulting rate
+drops from the maximum speed of the fast device down to a bit slower
+than the slow one. Note that the decline is hyperbolical in m,
+which means that it is non-linear and much faster than linear.
+This fast decline may seem somewhat counter-intuitive at first.
+
+In real-world scenarios the ratio between S and F is very important.
+
+1) If the fast is very fast and the slow is very slow,
+as with typical SSD vs SAS devices in random IOs (say 100 MB/s vs 1 MB/s),
+then we have:
+
+F = 100*S
+R = 100*S*S / (S + 100*m*S) = 100*S / (1 + 100*m)
+
+When we have 50% misses, 50% hits: R = 100*S / 51 = 1.98 * S
+When we have only 10% misses, 90% hits: R = 100*S / 11 = 9.17 * S
+
+2) If the fast is only "relatively" faster, 
+as with SSD vs SAS RAID	in sequential IOs (say 120 vs 30 MBs),
+then we have:
+
+F = 4*S
+R = 4*S*S / (S + 4*m*S) = 4*S / (1 + 4*m)
+
+When we have 50% misses: R = 4*S / 3 = 1.3 * S
+When we have only 10% misses: R = 4*S / 1.4 = 2.1 * S
+
+It's a private case of Amdhal's law: the detrimental effect of the slow
+link is much higher than the beneficial effect of the fast one.
+

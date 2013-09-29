@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -e
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+. $DIR/scripts/common.sh
+
+fail_if_not_root
+
+base=`basename $0`
+user=""
+
+if [ "$base" == "vscliuser" ]; then
+    user="--user"
+fi
+
+export PYTHONPATH="$DIR"
+
+python $DIR/vsa/client/cli/vsacli.pyc $user $*

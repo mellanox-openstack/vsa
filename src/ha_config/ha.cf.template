@@ -1,0 +1,111 @@
+# ------------------------------------------------
+#
+# Voltaire VSA HA Solution
+#
+# ------------------------------------------------
+#
+#	A note on specifying "how long" times below...
+#
+#	The default time unit is seconds
+#		10 means ten seconds
+#
+#	You can also specify them in milliseconds
+#		1500ms means 1.5 seconds
+#
+#
+#	keepalive: how long between heartbeats?
+#
+keepalive 1
+# ------------------------------------------------
+#	deadtime: how long-to-declare-host-dead?
+#
+#		If you set this too low you will get the problematic
+#		split-brain (or cluster partition) problem.
+#		See the FAQ for how to use warntime to tune deadtime.
+#
+deadtime 10
+# ------------------------------------------------
+#	warntime: how long before issuing "late heartbeat" warning?
+#	See the FAQ for how to use warntime to tune deadtime.
+#
+warntime 5
+# ------------------------------------------------
+#
+#	Very first dead time (initdead)
+#
+#	On some machines/OSes, etc. the network takes a while to come up
+#	and start working right after you've been rebooted.  As a result
+#	we have a separate dead time for when things first come up.
+#	It should be at least twice the normal dead time.
+#
+initdead 120
+# ------------------------------------------------
+#
+#	What UDP port to use for bcast/ucast communication?
+#
+udpport	[UPORT]
+# ------------------------------------------------
+#	Set up a unicast / udp heartbeat medium
+#	ucast [dev] [peer-ip-addr]
+#
+#	[dev]		device to send/rcv heartbeats on
+#	[peer-ip-addr]	IP address of peer to send packets to
+#
+#:CONFIG
+ucast [CONFDEV] [PEER_CONFIP_ADDR]
+#:DATA
+ucast [DATADEV] [PEER_DATAIP_ADDR]
+# ------------------------------------------------
+#	auto_failback:  determines whether a resource will
+#	automatically fail back to its "primary" node, or remain
+#	on whatever node is serving it until that node fails, or
+#	an administrator intervenes.
+#
+#	The possible values for auto_failback are:
+#		on	- enable automatic failbacks
+#		off	- disable automatic failbacks
+#		legacy	- enable automatic failbacks in systems
+#			where all nodes do not yet support
+#			the auto_failback option.
+#
+#	auto_failback "on" and "off" are backwards compatible with the old
+#		"nice_failback on" setting.
+#
+#	See the FAQ for information on how to convert
+#		from "legacy" to "on" without a flash cut.
+#		(i.e., using a "rolling upgrade" process)
+#
+#	The default value for auto_failback is "legacy", which
+#	will issue a warning at startup.  So, make sure you put
+#	an auto_failback directive in your ha.cf file.
+#	(note: auto_failback can be any boolean or "legacy")
+#
+auto_failback off
+#watchdog /dev/watchdog
+# ------------------------------------------------------
+#	Tell what machines are in the cluster
+#	node	nodename ...	-- must match uname -n
+node	[HOSTNAME]
+node	[PEER_HOSTNAME]
+# ------------------------------------------------------
+#	Do we use logging daemon?
+#	If logging daemon is used, logfile/debugfile/logfacility in this file
+#	are not meaningful any longer. You should check the config file for logging
+#	daemon (the default is /etc/logd.cf)
+#	more infomartion can be fould in http://www.linux-ha.org/ha_2ecf_2fUseLogdDirective
+#	Setting use_logd to "yes" is recommended
+#
+use_logd yes
+# ------------------------------------------------------
+crm	no
+
+# ipfail
+#[ipf] ping_group group1 [PING_GROUP]
+#[ipf] respawn hacluster [IPFAIL]
+#[ipf] apiauth ipfail gid=haclient uid=hacluster
+
+# linkfail
+#[lnf] respawn root /etc/ha.d/rc.d/linkfail
+
+# vsa watcher
+respawn root /etc/ha.d/rc.d/vsa_ha

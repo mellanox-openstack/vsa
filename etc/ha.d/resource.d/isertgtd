@@ -1,0 +1,42 @@
+#!/bin/bash
+#
+# This script is inteded to be used as resource script by heartbeat
+#
+# Copyright (C) 2011 Roi Dayan <roid@mellanox.com>
+#
+
+start() {
+	logger "starting tgtd"
+	/etc/init.d/isertgtd start
+	r=$?
+	sleep 1
+	return $r
+}
+
+stop() {
+	logger "stopping tgtd"
+	/etc/init.d/isertgtd stop
+	sleep 1
+	return 0
+}
+
+status() {
+	logger "tgtd status 0"
+	/etc/init.d/isertgtd status 0
+}
+
+# See how we were called.
+case "$1" in
+    start)
+	start
+	;;
+    stop)
+	stop
+	;;
+    status)
+        status
+        ;;
+    *)
+	echo $"Usage: $0 {start|stop|status}"
+	;;
+esac

@@ -1,0 +1,50 @@
+#!/bin/bash
+#
+# This script is inteded to be used as resource script by heartbeat
+#
+# Copyright (C) 2011 Roi Dayan <roid@mellanox.com>
+#
+
+logtag=VSA.resource
+
+start() {
+	# check if already running
+	export VSA_HA_TRANSITION=1
+	if /etc/init.d/vsasrv status > /dev/null 2>&1 ; then return 0 ; fi
+	/etc/init.d/vsasrv start >/dev/null 2>&1
+	local r=$?
+	logger -t $logtag "Start: $r"
+	return $r
+}
+
+stop() {
+	# sync latest logs
+	logger -t $logtag "`/opt/vsa/scripts/vsa_rsync.sh LOGS`"
+	/etc/init.d/vsasrv stop >/dev/null 2>&1
+	local r=$?
+	logger -t $logtag "Stop: $r"
+	return $r
+}
+
+status() {
+	/etc/init.d/vsasrv status >/dev/null 2>&1
+	local r=$?
+	logger -t $logtag "Status: $r"
+	return $r
+}
+
+# See how we were called.
+case "$1" in
+    start)
+	start
+	;;
+    stop)
+	stop
+	;;
+    status)
+        status
+        ;;
+    *)
+	echo $"Usage: $0 {start|stop|status}"
+	;;
+esac

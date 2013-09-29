@@ -1,0 +1,105 @@
+#!/bin/bash
+#
+# Copyright (C) 2011 Roi Dayan <roid@mellanox.com>
+#
+
+# interval between checks
+INTERVAL=60
+
+# idle before start
+IDLE=60
+
+########################
+
+vsarsync="/opt/vsa/scripts/vsa_rsync.sh"
+
+getsize="$vsarsync allsize"
+syncall="$vsarsync ALL"
+allsize=0
+
+########################
+
+HA_DIR=/etc/ha.d
+. ${HA_DIR}/shellfuncs
+
+
+log() {
+	logger -t VSA.rsync "$1"
+}
+
+size_changed() {
+	local s=`$getsize`
+	if [[ "$s" != "$allsize" ]]; then
+		allsize="$s"
+		return 0
+	fi
+	return 1
+}
+
+save_size() {
+	allsize=`$getsize`
+}
+
+do_rsync() {
+	log "Rsync vsa conf & logs"
+	log "`$syncall`"
+}
+
+is_master() {
+        local a=`cl_status rscstatus`
+        if [[ "$a" == "all" ]]; then
+                return 0
+        fi
+        return 1
+}
+
+is_local() {
+	local a=`cl_status rscstatus`
+	if [[ "$a" == "local" ]]; then
+		return 0
+	fi
+	return 1
+}
+
+should_be_master() {
+	local s=`grep "^role=" /opt/vsa/files/conf/vsa.conf | cut -d"=" -f2`
+	if [[ "$s" == "master" ]]; then
+		return 0
+	fi
+	return 1
+}
+
+vsasrv_running() {
+	service vsasrv status >/dev/null 2>&1
+	return $?
+}
+
+run_vsasrv() {
+	service vsasrv start >/dev/null 2>&1
+}
+
+go_takeover() {
+	/usr/share/heartbeat/hb_takeover
+	sleep $IDLE
+}
+
+go_standby() {
+	/usr/share/heartbeat/hb_standby
+	sleep $IDLE
+}
+
+sleep $IDLE
+log "Started"
+
+while true; do
+	is_local && should_be_master && go_takeover
+	is_master && ! vsasrv_running && run_vsasrv
+	if is_master && ! vsasrv_running ; then
+		log "Failed to restart vsasrv. going standby."
+		go_standby
+	fi
+	is_master && size_changed && do_rsync
+	# save size anyway
+	save_size
+	sleep $INTERVAL
+done

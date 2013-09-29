@@ -1,0 +1,36 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>[title]</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<META HTTP-EQUIV="CACHE-CONTROL" CONTENT="NO-CACHE">
+<link href="[static]css/header.css" rel="stylesheet" type="text/css" />
+<link type="text/css" href="[static]jqueryui/css/vsa/jquery-ui-1.8.21.custom.css" rel="stylesheet" />
+<script type="text/javascript" src="[static]jquery/jquery-1.4.4.min.js"></script>
+<script type="text/javascript" src="[static]jqueryui/js/jquery-ui-1.8.8.custom.min.js"></script>
+</head>
+<body onload="document.forms[0].user.focus();">
+  <div id="login-wrapper" class="ui-widget ui-widget-header ui-corner-15">
+      <div id="login-logo" class="ui-widget ui-widget-header">
+      </div>
+      <div id="login-form">
+        <form method="post" action="/vsa/login">
+            <table style="border: 0">
+                <tr>
+                <td><label class="left" for="input-user" />User:</label></td><td><input id="input-user" type="text" name="user" />
+                </td></tr>
+                <tr>
+                <td><label class="left" for="input-password" />Password:</label></td><td><input id="input-password" type="password" name="password" />
+                </td></tr>
+                <tr>
+                    <td/>
+                    <td>
+                        <input type="submit" class="left" value="Login" />
+                    </td>
+                </tr>
+            </table>
+        </form>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,74 @@
+#!/bin/bash
+#
+# vsa-clean        Startup script
+#
+# chkconfig: 345 50 30
+# description: vsa cleanup
+#
+### BEGIN INIT INFO
+# Provides:             vsa-clean
+# Required-Start:       
+# Short-Description:    
+# Description:          
+# Required-Stop:        
+# Default-Start:        3 4 5
+# Default-Stop:         0 1 2 6
+### END INIT INFO
+#
+
+test -f /etc/rc.d/init.d/functions && . /etc/rc.d/init.d/functions
+test -f /etc/rc.status && . /etc/rc.status
+
+vsa_drbd_res="/etc/drbd.d/vsa.res"
+clean_drbd=true
+
+lockfile=/var/lock/subsys/vsa-clean
+
+RETVAL=0
+
+print_status() {
+	if [ -f /etc/rc.status ]; then
+		echo -n "VSA cleanup: "
+		rc_status -v
+	else
+		action $"VSA cleanup: " true
+	fi
+}
+
+start() {
+	$clean_drbd && [ -f $vsa_drbd_res ] && rm -f $vsa_drbd_res
+	print_status
+	[ "$RETVAL" = 0 ] && touch $lockfile
+}
+
+stop() {
+	$clean_drbd && [ -f $vsa_drbd_res ] && rm -f $vsa_drbd_res
+	print_status
+	[ "$RETVAL" = 0 ] && rm -f $lockfile
+}
+
+status() {
+	:
+}
+
+# See how we were called.
+case "$1" in
+  start)
+    start
+    ;;
+  restart)
+    stop
+    start
+    ;;
+  stop)
+    stop
+    ;;
+  status)
+    status
+    ;;
+  *)
+    echo $"Usage: $0 {start|stop|status|restart}"
+    ;;
+esac
+
+exit $RETVAL

@@ -1,0 +1,48 @@
+#!/bin/bash
+#
+# This script is inteded to be used as resource script by heartbeat
+#
+# Copyright (C) 2011 Roi Dayan <roid@mellanox.com>
+#
+
+ha_ips() {
+	c=0
+	unset IP
+	unset IN
+        local p=`grep -E "\bvsa\b" /etc/ha.d/haresources | grep -io '[0-9.]*/[0-9.]*/[a-z0-9]*/[0-9.]*'`
+	for ln in $p; do
+		virtual_ip=${ln%%/*}
+		a=${ln%/*}
+		interface=${a##*/}
+		IP[$c]=$virtual_ip
+		IN[$c]=$interface
+		((c++))
+	done
+}
+
+if [[ "$1" == "start" ]]; then	
+	if [[ -f /etc/ha.d/haresources ]]; then
+		# find virtual ips
+		ha_ips
+		# find all gateways
+		route -n | awk 'NR > 2 && $2 != "*" && $2 != "0.0.0.0" {print $2" "$8}' | while read gw gwi
+		do
+			# check connectivity to gateway
+			if ping -c2 -W2 $gw > /dev/null 2>&1; then
+				#arping -f -w2 -U -s $virtual_ip $ip > /dev/null 2>&1
+				for (( c=0; c<${#IP[@]}; c++ )) do
+					virtual_ip=${IP[$c]}
+					interface=${IN[$c]}
+					if [[ "$interface" != "$gwi" ]]; then gw="$virtual_ip" ; fi
+					logger -t fix_arp "IP: $virtual_ip Gateway: $gw Interface: $interface"
+					arping -f -q -c5 -w2 -U -I $interface -s $virtual_ip $gw > /dev/null 2>&1
+				done
+			fi
+			#http://www.gossamer-threads.com/lists/linuxha/users/46996
+			#/sbin/arping -f -q -c 5 -w 5 -I $INTERFACE -s $IP -U <switch ip or name>
+		done
+	else
+		exit 1
+	fi
+fi
+exit 0

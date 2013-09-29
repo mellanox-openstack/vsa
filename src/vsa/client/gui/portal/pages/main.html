@@ -1,0 +1,107 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>[title]</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <META HTTP-EQUIV="CACHE-CONTROL" CONTENT="NO-CACHE">
+  <link rel="stylesheet" type="text/css" href="[static]jqueryui/css/vsa/jquery-ui-1.8.21.custom.css" />
+  <link rel="stylesheet" type="text/css" href="[static]jqueryui/css/vsa/vsa.css" />
+  @css:header.css
+  @css:icons.css
+  <script type="text/javascript" src="[static]jquery/jquery-1.4.4.min.js"></script>
+  <script type="text/javascript" src="[static]jqueryui/js/jquery-ui-1.8.8.custom.min.js"></script>
+  <script src="[static]jstree/jquery.jstree.js" type="text/javascript"></script>
+  <style type="text/css" title="currentStyle">
+    @import "[static]datatables/css/demo_page.css";
+    @import "[static]datatables/css/demo_table_jui.css";
+  </style>
+  <script type="text/javascript" src="[static]datatables/js/jquery.dataTables.min.js"></script>
+  <!--[if lt IE 9]><script language="javascript" type="text/javascript" src="[static]jqplot/excanvas.js"></script><![endif]-->
+  <script language="javascript" type="text/javascript" src="[static]jqplot/jquery.jqplot.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="[static]jqplot/jquery.jqplot.min.css" />
+  @vsa-javascript:vsa.js
+</head>
+<body>
+    <div id="main-tabs" class="hide">
+        <div id="header" class="ui-corner-all">
+            <!--<img id="header-img" src="[static]images/header-img.png"/>-->
+            <span id="logo">&nbsp;</span>
+            <!--<ul>
+                <li><a href="logout">logout</a></li>
+                <li><a href="[static]webhelp/index.html">help</a></li>
+            </ul>-->
+            <div id="headerinfo">User: [user]
+                <a href="logout">logout</a>
+                            </div>
+        <!-- tabs -->
+        <div class="tabs">
+        <ul>
+            <li>
+                <a href="#tab-manage">
+                    <img class="tab-icon" src="[static]icons-vsa/tabs/manage_B.png"/>
+                </a>
+            </li>
+            <li>
+                <a href="#tab-alarms">
+                    <img class="tab-icon" src="[static]icons-vsa/tabs/alarms_B.png"/>
+                </a>
+            </li>
+            <li>
+                <a href="#tab-reports">
+                    <img class="tab-icon" src="[static]icons-vsa/tabs/reports_B.png"/>
+                </a>
+            </li>
+            <li>
+                <a href="#tab-logs">
+                    <img class="tab-icon" src="[static]icons-vsa/tabs/Logs_B.png"/>
+                </a>
+            </li>
+        </ul>
+        </div>
+        </div>
+	<!-- manage -->
+	<div id="tab-manage">
+		<div id="side-bar" class="sidebar left">
+		  <div id="toolbar_tree" class="ui-corner-all ui-widget-header">
+		      <button id="refresh-tree" title="Refresh" onclick="refreshTree()">refresh</button>
+		      <button id="expand-tree" title="Expand" onclick="expandTree('manage_tree')">expand</button>
+		      <button id="collapse-tree" title="Collapse" onclick="collapseTree('manage_tree')">collapse</button>
+		  </div>
+		  <div class="ui-helper-clearfix"></div>
+		  <div id="manage_tree"></div>
+		</div>
+		<div class="pagebody">
+            <div id="manage-toolbar-buttons" class="ui-widget-header ui-corner-all toolbar">
+                <a href="[static]webhelp/index.htm" target="_blank">
+                    <span class="ui-icon ui-icon-help1 inline"></span>
+                </a>
+            </div>
+			<div id="manage-table-div">
+				<form id="manage-table-form"></form>
+				<div id="internal-tabs">
+				</div>
+			</div>
+		</div>
+		<div class="ui-helper-clearfix"></div>
+	</div>
+	<!-- logs -->
+	<div id="tab-logs"></div>
+	<!-- alarms -->
+	<div id="tab-alarms">
+		<div id="alarms-toolbar-buttons" class="ui-corner-all toolbar"></div>
+		<div class="spacer"></div>
+		<div id="alarms-div">
+			<form id="alarms-table-form"></form>
+		</div>
+	</div>
+	<!-- reports -->
+	<div id="tab-reports"></div>
+	<!-- dialogs -->
+	<div id="dialog-msg">
+	  <div id="msg"></div>
+	</div>
+	<div id="dialog-form"></div>
+	<div id="popup" class="ui-widget popup"></div>
+  </div>
+</body>
+</html>

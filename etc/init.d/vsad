@@ -1,0 +1,99 @@
+#!/bin/bash
+#
+# vsad        Startup script for vsad
+#
+# chkconfig: 345 85 16
+# description: vsad service script
+#
+### BEGIN INIT INFO
+# Provides:             vsad
+# Required-Start:       $network
+# Short-Description:    vsad service script
+# Description:          vsad service script
+# Required-Stop:        $network
+# Default-Start:        3 4 5
+# Default-Stop:         0 1 2 6
+### END INIT INFO
+#
+
+test -f /etc/rc.d/init.d/functions && . /etc/rc.d/init.d/functions
+test -f /etc/rc.status && . /etc/rc.status
+
+prog="VSA agent"
+bin="vsad"
+log="/opt/vsa/files/log/vsad.console.log"
+
+start_vsad="/opt/vsa/$bin start >> $log 2>&1"
+stop_vsad="/opt/vsa/$bin stop"
+status_vsad="/opt/vsa/$bin status"
+
+lockfile=/var/lock/subsys/vsad
+
+_start() {
+	eval "$start_vsad"
+	RETVAL=$?
+	return $RETVAL
+}
+
+start() {
+	if [ -f /etc/rc.status ]; then
+		echo -n "Starting $prog: "
+		eval $start_vsad
+		rc_status -v
+		RETVAL=$?
+	else
+		action $"Starting $prog: " _start
+	fi
+	[ "$RETVAL" = 0 ] && touch $lockfile
+}
+
+stop() {
+	echo "Stopping $prog"
+	eval "$stop_vsad"
+	RETVAL=0
+	[ "$RETVAL" = 0 ] && rm -f $lockfile
+	if [ -f /etc/rc.status ]; then
+		rc_status -v
+	fi
+}
+
+restartq() {
+	echo "Restarting $prog"
+	stop > /dev/null
+	start > /dev/null
+}
+
+status() {
+	eval "$status_vsad"
+	RETVAL=$?
+	if [ "$RETVAL" == 0 ] ; then
+		echo "$prog is running..."
+	else
+		echo "$prog is not running"
+	fi
+}
+
+# See how we were called.
+case "$1" in
+  start)
+    start
+    ;;
+  restart)
+    stop
+    start
+    ;;
+  restartq)
+    restartq
+    ;;
+  stop)
+    stop
+    ;;
+  status)
+    status
+    ;;
+  *)
+    echo $"Usage: $0 {start|stop|status|restart|restartq}"
+    ;;
+esac
+
+exit $RETVAL

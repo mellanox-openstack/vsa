@@ -1,0 +1,74 @@
+Subject:
+flashcache doc, start of a draft
+From:
+Alexander Nezhinsky <alexandern@mellanox.com>
+Date:
+Thu, 31 Mar 2011 20:36:58 +0200
+To:
+Or Gerlitz <ogerlitz@mellanox.com>, 'Yaron Haviv' <yaronh@mellanox.com>
+
+i started a draft of the cache doc.
+please look at it -- is this the right format?
+what aspects should be covered?
+
+
+Introduction to Flashcache
+--------------------------
+1. General description
+2. Design characteristics
+ 2.1. Device Mapper plug-in
+ 2.2. Set Associative cache
+ 2.3. Set Associative cache
+ 2.4. Write-back mode
+ 2.5. Replacement policy
+ 2.6. Cache hits and misses
+
+***
+
+1. General description
+
+Flashcache is a block cache for Linux. It supports write-back mode.
+It is implemented as a kernel driver which is plugged into
+the Device Mapper (DM) subsystem. This means that it is located below
+the file systems and above the storage stack.
+Flashcache is designed to take advantage from the fast persistent storage.
+
+2. Design characteristics
+
+2.1. Device Mapperplug-in
+Flashcache is built as a plug-in driver within the Linux Device Mapper (DM).
+DM facilitates building software RAIDs and other custom-mapped storage schemes.
+It is used by LVM and some other storage components.
+
+2.2. Blocks
+
+Flushcache maintains a custom-sized unit of storage which is called block.
+The Data Mover layer breaks up all IOs into block-size chunks before passing
+the IOs down to the cache layer.
+
+2.3. Set Associative cache
+
+The cache is structured as a set associative cash. This means that it is
+divided up into a number of fixed size sets, and all blocks from a few
+distinct slow disk's regions that are mapped to the same set will compete
+for the free space within the set.
+
+Search (in memory) for a block inside the set is linear so a reasonably
+small set size (default is 512) won't affect performance.
+
+2.4. Write-back mode
+
+Currently the cache supports write-back mode only
+
+2.5. Replacementpolicy
+
+Replacement policy is either FIFO or LRU within a cache set. The
+default is FIFO but it can be changed.
+
+2.6.Cache hits and misses
+
+If the requested block is found in the cache, we have a "cache hit".
+In the case of a cache hit, the read is serviced from the SSD.
+Otherwise it is a cache miss, in which case the data is read from disk,
+copied into flash and returned to the user.
+

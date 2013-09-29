@@ -1,0 +1,327 @@
+html {
+    height: 98%;
+}
+
+body {
+/*	font-size: 62.5%;*/
+    padding: 0;
+    margin: 0;
+    height: 100%;
+	font-family: "Trebuchet MS", "Helvetica", "Arial",  "Verdana", "sans-serif";
+	font-size: 0.7em;
+    background-color: #EDF0F5;
+}
+
+#tab-manage {
+    min-height: 100%;
+}
+
+table {
+	font-size: 1em;
+    text-align: center;
+}
+
+tr.even:hover,
+tr.odd:hover,
+.dataTables_wrapper .selected {
+    background-color: #4297D7;
+    color:#edf0f5;
+}
+
+
+#header {
+	position: relative;
+	height: 60px;
+	overflow: hidden;
+	/*#144D92 */
+	background:#115586 url(../images/header-img.png) no-repeat; 
+	background-position: right center;
+	clear: both;
+}
+
+#headerinfo {
+    position: absolute;
+    right: 36px;
+    bottom: 1px;
+    color: #FFF;
+    font-size: 1em;
+}
+
+#headerinfo a:hover,
+#headerinfo a:visited,
+#headerinfo a:active,
+#headerinfo a:link {
+	text-decoration: underline;
+	color: white;
+}
+
+#logo {
+    position: absolute;
+    top: 10px;
+    right: 30px;
+    display: block;
+    width: 126px;
+    height: 30px;
+    background: url(../images/Mellanox_logo_hor_white.png) no-repeat;
+}
+
+#login-logo {
+	width: 153px;
+	height: 117px;
+	background: url(../images/Mellanox_logo_login_white.png) no-repeat;
+    background-position: center;
+	border: none;
+	margin: auto;
+	margin-bottom: 7px;
+}
+#header-big {
+	width: 273px;
+	height: 64px;
+	overflow: hidden;
+	margin: auto;
+}
+#login-title {
+	margin: auto;
+	text-align: center;
+}
+
+
+#login-wrapper {
+    height: 210px;
+    width: 400px;
+    margin: auto;
+    padding: 10px;
+    position: relative;
+    top: 20%;
+    left: auto;
+}
+
+#login-main {
+    width: 400px;
+}
+
+#login-main table{
+	font-size: 1em;
+}
+
+#login-form {
+    margin: auto;
+    position: relative;
+    top: 0px;
+    left: auto;
+    right: 20px;
+    width: 210px;
+    height: 100px;
+}
+
+#login-form input[type="submit"] {
+    margin: 0;
+    height: 28px;
+    width: 55px;
+}
+
+.form-raw {
+    float: right;
+}
+
+label {
+    float: left;
+    padding: 5px 3px 0 0;
+}
+
+#header .tabs {
+    position: absolute;
+    left: 5px;
+    bottom: 0px;
+}
+
+#main-tabs {
+    position: relative;
+    margin: 5px;
+    min-height: 98%;
+	clear:both;
+}
+
+.sidebar {
+	overflow: hidden;
+    padding-right: 3px;
+	height: 100% !important;
+	width: 275px;
+	border-right: 3px double #97A1B4;
+}
+
+#manage_tree {
+    overflow: auto;
+    height: 100%;
+    margin-top:20px;
+}
+
+#manage-table-div {
+	display: inline-block;
+	width: 100%;
+	margin-top: 10px;
+}
+
+.pagebody {
+	margin-left: 285px;
+	float: none;
+	width: auto;
+}
+
+.toolbar { 
+}
+
+.jstree a {
+    color: #1A3147 !important;
+}
+
+#radioNav {
+	position: relative;
+	top: 4px;
+}
+
+table.display th.checkbox {width: 1px;}
+/*table.display th.status {width: 1px;}*/
+table.display th.editbox {width: 1px;}
+table.display td.status {white-space: nowrap;}
+table.display td span {display: inline-block;}
+
+.right {float: right;}
+.left {float: left;}
+.hide {display: none;}
+.nowrap {white-space: nowrap;}
+
+
+#target-info {
+	margin-top: 10px;
+	padding: 50px 4px;
+}
+
+.spacer {
+        height: 10px;
+        clear: both;
+}
+
+.progress {
+	padding: 10px 100px;
+	background: url(../icons-vsa/progress.gif) no-repeat;
+}
+
+.loading {
+	margin: 5pt;
+	padding: 1pt 3em;
+	background: url(../images/loading-snake.gif) no-repeat;
+}
+
+.pointer {cursor: pointer;}
+
+.dump {
+	padding: 10px;
+	white-space: pre-wrap;
+	font-family: courier;
+	font-size: 15px;
+	border: 1px solid #4297D7;
+	background-color: #EDF0F5;
+	display: block;
+}
+
+.popup {
+	position: fixed;
+	min-height: 1em;
+	min-width: 1em;
+	z-index: 1005;
+	bottom: 10px;
+	right: 10px;
+	overflow: hidden;
+}
+
+.popup > div {
+	min-height: 1em;
+	min-width: 1em;
+	font-size: 1.5em;
+	margin: 0.3em;
+}
+
+.ui-dialog .ui-dialog-content {
+    padding: 1.5em 1em;
+}
+
+.conf_form td {
+	white-space: nowrap;
+}
+
+.conf_form fieldset {
+    margin-right: 10px;
+    display: inline;
+}
+
+.conf_form td input,
+.conf_form td fieldset,
+.conf_form td select {
+    float: left;
+    white-space: nowrap;
+}
+
+.conf_form td fieldset input {
+    float: none;
+}
+
+.conf_form td fieldset {
+    border: none;
+}
+
+.ui-icon.inline {
+	display: inline-block; !important;
+}
+
+.monitor {
+	display: block;
+}
+
+.mon-chart {
+	display: inline-block;
+	float: none;
+	margin-left: 20px;
+}
+
+.mon-cols {
+	display: inline-block;
+	margin-top: 20px;
+	float: left;
+}
+
+#internal-tabs {
+    margin-top: 50px;
+}
+
+.internal-tabs-header {
+    font-size: 1em;
+    font-weight: bold;
+    text-align: center;
+    width: 100%;
+    vertical-align: center;
+    background-color: #EDF0F5;
+}
+
+#msg {
+	word-wrap: break-word;
+	width: 100%;
+}
+
+.internal-tab-icon {
+	margin-right: 10px;
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        background-position: 50% 50%;
+        background-repeat: no-repeat;
+}
+
+table.display td {
+	cursor: pointer;
+}
+
+/* fix table header sort icon position in IE */
+table.display thead th div.DataTables_sort_wrapper {
+    height: 100%;
+}

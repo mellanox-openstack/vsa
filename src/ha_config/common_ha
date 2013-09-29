@@ -1,0 +1,618 @@
+#!/bin/sh
+
+shopt -s extglob
+# common functions
+
+HA_LOGFILE="/tmp/ha_install.log"
+OUTPUT_FILE="/dev/stdout"
+#REMOTE_INSTALL_DIR="/tmp/vsa_inst"
+#VSA_LOGFILE="/opt/vsa/files/log/ha_install.log"
+#VSA_HA_NODES="/tmp/vsa_ha_nodes"
+#START_SCRIPT="./_install.sh"
+UPORT=694
+VERBOSE=0
+DRYRUN=0
+basename=$(basename $0)
+
+usage () {
+    echo "Usage:"
+    echo -e "	$basename -m master -s standby -c <iface>,<virtual-ip/prefix> -d <iface>,<virtual-ip/prefix> [ -f <ping-ips> ] [ -u <hb-port> ]\n"
+    echo -e " -m : Master node host"
+    echo -e " -s : Standby node host"
+    echo -e " -c : Config interface and virtual config ip with prefix"
+    echo -e " -d : Data interface and virtual data ip with prefix"
+    echo -e "      Config and Data virtual IPs addresses are migrated between master and standby upon failover"
+    echo -e " -f : Ping IPs for HA ipfail separated by comma (default is to use linkfail)"
+    echo -e " -u : UDP port for heartbeat (default: $UPORT)"
+    echo -e " -r : Add drbd resource name <resource_name> to haresources"
+    echo -e " -h : Show help"
+    echo -e "\nExample:"
+    echo -e "\t$basename -m dill -s basil -c eth0,172.30.49.230/16 -d ib0,192.168.20.230/24"
+    exit 1
+}
+
+progress() {
+	chars=( "-" "\\" "|" "/" )
+	interval=1
+	count=0
+	echo -en "\n-"
+	while :; do
+		pos=$(($count % 4))
+    		echo -en "\b${chars[$pos]}"
+		count=$(($count + 1))
+		sleep $interval
+	done
+}
+
+start_progress() {
+	progress &
+	pid=$!
+	trap "stop_progress $pid" INT TERM EXIT
+}
+
+stop_progress() {
+	exec 2>/dev/null
+	kill $pid
+	echo -e "\b"
+}
+
+cexe() {
+	(( $VERBOSE )) && echo "$*"
+	echo "  >> $*" >> $HA_LOGFILE
+	eval "$*" >> $HA_LOGFILE 2>&1
+	if [ "$?" -ne "0" ]; then
+		stop_progress
+		echo -e "\n\nCommand FAILED: $*" >> $HA_LOGFILE
+		echo "ERROR - See more details in $HA_LOGFILE"
+		exit 1
+	fi
+}
+
+get_opts() {
+	DRBDRES=""
+
+	while getopts :m:s:c:d:u:l:r:vf o; do
+		case "$o" in
+			m) NODE[1]="$OPTARG";;
+			s) NODE[2]="$OPTARG";;
+			f) PINGGROUP="${OPTARG//,/ }";;
+			c) CONFIF="$OPTARG";;
+			d) DATAIF="$OPTARG";;
+			u) UPORT="$OPTARG";;
+			r) DRBDRESNAME="$OPTARG";;
+			l) HA_LOGFILE="$OPTARG";;
+			v) VERBOSE=1;;
+			*) usage;;
+		esac
+	done
+
+	test -z "${NODE[1]}" -o -z "${NODE[2]}" -o -z "$CONFIF" -o -z "$DATAIF" && usage;
+
+#	if [ $DRYRUN -eq "1" ]; then
+#		OUTPUT_FILE=$HA_LOGFILE
+#	fi
+
+	if [[ -n "$DRBDRESNAME" ]]; then
+		DRBDRES="drbddisk::$DRBDRESNAME"
+	fi
+}
+
+start_script() {
+	# parse node information
+	parse_node
+
+	# exchange keys between master and standby servers
+	key_exchange
+
+	# find node ips
+	find_ips
+
+	# parse virtual ips information
+	check_vips
+	parse_vips
+
+        # check ssh to remote host
+        #check_ssh_remote
+
+	# find hostname - we need the host returned by hostname
+	find_hostname
+
+	# find netmask
+	#find_netmask
+
+	# validate ports
+	check_ports
+
+	# validate hostname
+	#check_hostname
+
+	# find devices and guids
+	#find_devices
+	#find_nodeguids
+
+	check_drbd_res
+
+	# print nodes info
+	show_node_info
+
+	# validate distribution (SLES10.x or RH5.x)
+	#check_dist
+
+	# validate partions size and clean
+	#check_partitions
+
+	# exit if we are running in dry-run mode
+	[[ $DRYRUN -eq "1" ]] && exit 0
+}
+
+key_exchange() {
+	# authenticate master server on standby
+	echo "Authenticate master on ${NODE[2]}" >> $HA_LOGFILE
+	let_me_in ${NODE[2]}
+
+	# authenticate standby server on master
+	echo "Authenticate standby ${NODE[2]} on master" >> $HA_LOGFILE
+	if scp -o "ConnectTimeout 3" ${HAFILES}/get_remote_key ${NODE[2]}:/tmp >> $HA_LOGFILE; then
+		ssh -o "ConnectTimeout 3" ${NODE[2]} /tmp/get_remote_key | cat >> ~/.ssh/authorized_keys
+		uniq ~/.ssh/authorized_keys /tmp/keys; mv -f /tmp/keys ~/.ssh/authorized_keys
+	else
+		echo "Error connecting ${NODE[2]}"
+		exit 1
+	fi
+}
+
+display_warning() {
+#	echo -e "\n\t#####################################################################"
+#	echo -e   "\t#                                                                   #"
+#	echo -e   "\t#  Warning: installation will erase all data on drbd partitions!!!  #"
+#	echo -e   "\t#                                                                   #"
+#	echo -e   "\t#####################################################################\n"
+	#echo -e "\nHigh availability will install heartbeat on servers"
+	echo ""
+	echo -n "Do you want to continue [Y|n]? "
+	read ans
+	if [[ $ans =~ [NnNOnoNo] ]]; then
+		echo "Aborted."
+		exit 1
+	fi
+}
+
+let_me_in() {
+	if [ ! -e ~/.ssh/id_dsa.pub ]; then
+		ssh-keygen -q -f ~/.ssh/id_dsa -N "" -t dsa
+	fi
+	# leave only 1 uniq line in ~/.ssh/authorized_keys
+	cat ~/.ssh/id_dsa.pub | ssh -o "ConnectTimeout 3" $1  "cat >> ~/.ssh/authorized_keys; uniq ~/.ssh/authorized_keys /tmp/keys; mv -f /tmp/keys ~/.ssh/authorized_keys"
+
+	local ret=$?
+	if [[ "$ret" != 0 ]]; then
+		echo "Error connecting $1"
+		exit 1
+	fi
+
+	if ! grep $1 /root/.ssh/known_hosts > /dev/null 2>&1; then
+		ssh-keyscan -t dsa $1 >> /root/.ssh/known_hosts
+	fi
+}
+
+find_hostname() {
+	for i in 1 2; do
+		if [ -z "${HOST[$i]}" ]; then
+			HOST[$i]=`${cmd[$i]} hostname`
+		fi
+	done
+}
+
+check_ports() {
+	# test if ports are int
+	if ! [[ "$UPORT" = +([0-9]) ]]; then	
+		echo "ERROR: Invalid udp/tcp port!" >> $OUTPUT_FILE
+		exit 1
+	fi
+}
+
+check_hostname() {
+	for i in 1 2; do
+		host=`${cmd[$i]} hostname`
+		if [ $host != ${HOST[$i]} ]; then
+			echo "ERROR: Given hostname(${HOST[$i]}) does not match hostname($host) at ${CONFIP[$i]}" >> $OUTPUT_FILE
+			exit 1
+		fi
+	done
+}
+
+validate_ip() {
+	my_ip=$1
+	ip_stat=1
+	if [[ $my_ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+		OIFS=$IFS
+		IFS='.'
+		my_ip=($my_ip)
+		IFS=$OIFS
+		[[ ${my_ip[0]} -le 255 && ${my_ip[1]} -le 255 && ${my_ip[2]} -le 255 && ${my_ip[3]} -le 255 ]]
+		ip_stat=$?
+	fi
+	if [ $ip_stat -ne "0" ]; then
+		echo "ERROR: Invalid ip $1" >> $OUTPUT_FILE
+		exit 1
+	fi
+
+}
+
+#check_ssh_remote() {
+#	ssh -o "ConnectTimeout 3" ${CONFIP[2]} "echo 2>&1" &> /dev/null
+#	if [ $? -ne 0 ]; then
+#		echo "ERROR: Cannot connect to remote host ${CONFIP[2]} (${HOST[2]})" >> $OUTPUT_FILE
+#		exit 1
+#	fi
+#}
+
+check_rpms() {
+	local err=0
+	for i in 1 2; do
+		#[[ ! `${cmd[$i]} rpm -q drbd-utils` ]] && err=1 && echo "Please install drbd" >> $OUTPUT_FILE
+		#[[ ! `${cmd[$i]} rpm -q heartbeat` ]] && err=1 && echo "Please install heartbeat" >> $OUTPUT_FILE
+		#${cmd[$i]} rpm -q --quiet drbd-utils ; (("$?" > 0)) && err=1 && echo "Please install drbd" >> $OUTPUT_FILE
+		${cmd[$i]} rpm -q --quiet heartbeat ; (("$?" > 0)) && err=1 && echo "Please install heartbeat on ${CONFIP[$i]} (${HOST[$i]})" >> $OUTPUT_FILE
+		${cmd[$i]} rpm -q --quiet vsa-ha ; (("$?" > 0)) && err=1 && echo "Please install vsa-ha on ${CONFIP[$i]} (${HOST[$i]})">> $OUTPUT_FILE
+	done
+
+	if [ "$err" = 1 ]; then
+		exit 1
+	fi
+
+	IPFAIL=`rpm -ql heartbeat | grep ipfail | head -1`
+}
+
+check_drbd_res() {
+	r=0
+	if [[ -n "$DRBDRESNAME" ]]; then
+		drbdadm cstate $DRBDRESNAME > /dev/null 2>&1
+		r="$?"
+	fi
+	if [[ "$r" != 0 ]]; then
+		echo "Can not use DRBD resource '$DRBDRESNAME'" >> $OUTPUT_FILE
+		exit 1
+	fi
+}
+
+install_rpms() {
+	rpmfile[1]=${HAFILES}/rpms.list
+	rpmfile[2]=${HAFILES}/rpms.list
+	rpm_path[1]=${HAFILES}/rpms
+	rpm_path[2]="/tmp/ha_rpms"
+#	echo "Open rpms archive ha_rh_rpms.tar.gz" >> $HA_LOGFILE
+#	cexe tar xzvf ../ha_rh_rpms.tar.gz
+	for i in 1 2; do
+		echo "Installing HA rpms on server $i (${HOST[$i]})" 2>&1 | tee -a $HA_LOGFILE
+		start_progress
+		cexe ${cmd[$i]} mkdir -p /tmp/ha_rpms
+#		# workaround for bug http://bugs.centos.org/view.php?id=2821
+#		cexe ${cmd[$i]} mkdir -p /var/lib/heartbeat/cores
+		echo "${DIST[$i]} using ${rpmfile[$i]}" >> $HA_LOGFILE
+		for rpm in `cat ${rpmfile[$i]}`; do
+			if [ $i -eq "2" ]; then
+				cexe scp ${rpm_path[1]}/$rpm ${CONFIP[2]}:${rpm_path[2]}/$rpm
+			fi
+			n=${rpm%.rpm}
+			cexe ${cmd[$i]} rpm -q --quiet $n || rpm -Uvh ${rpm_path[$i]}/$rpm
+		done
+		cexe ${cmd[$i]} rm -fr /tmp/ha_rpms
+#		# add heartbeat to chkconfig
+		cexe ${cmd[$i]} chkconfig heartbeat on
+#		#cexe ${cmd[$i]} chkconfig drbd on
+#		# TODO: add suse support
+#		#insserv  heartbeat >/dev/null 2>&1
+		stop_progress
+	done
+}
+
+check_dist() {
+	KERNEL_NUM[1]=`uname -r`
+	KERNEL_NUM[2]=`ssh ${CONFIP[2]} uname -r`
+	for i in 1 2; do
+		if [[ "${KERNEL_NUM[$i]}" =~ "2.6.16" ]]; then
+			DIST[$i]="Sles 10.x"
+		elif [[ "${KERNEL_NUM[$i]}" =~ "2.6.18-53" ]]; then
+			DIST[$i]="RedHat 5.1"
+			rpmfile[$i]=rh5.1_rpms.list
+		elif [[ "${KERNEL_NUM[$i]}" =~ "2.6.18-92" ]]; then
+			DIST[$i]="RedHat 5.2"
+			rpmfile[$i]=rh5.2_rpms.list
+		elif [[ "${KERNEL_NUM[$i]}" =~ "2.6.18-128" ]]; then
+			DIST[$i]="RedHat 5.3"
+			rpmfile[$i]=rh5.3_rpms.list
+		else
+			echo "Distribution ${KERNEL_NUM[$i]} not supported, exiting..." >> $OUTPUT_FILE
+			exit 1
+		fi
+	done
+}
+
+stop_heartbeat() {
+	echo "Stopping vsa service.."
+	for i in 1 2; do
+		cexe ${cmd[i]} "service vsasrv stop ; true"
+		cexe ${cmd[i]} chkconfig vsasrv off
+	done
+
+	echo "Making sure vsad is running.."
+	for i in 1 2; do
+		cexe ${cmd[i]} "service vsad start ; true"
+		cexe ${cmd[i]} chkconfig vsad on
+	done
+
+	echo "Making sure heartbeat is stopped.."
+	for i in 1 2; do
+		cexe ${cmd[i]} service heartbeat stop
+	done
+}
+
+check_heartbeat_port() {
+	echo "Checking if heartbeat udp port is blocked.."
+	# run receiver
+	eval ${cmd[2]} "/bin/env python /opt/vsa/scripts/pingpongudp.pyc -r ${CONFIP[2]} $UPORT >/dev/null 2>&1 &"
+	# give it a sec to bind
+	sleep 1
+	# run sender
+	eval ${cmd[1]} "/bin/env python /opt/vsa/scripts/pingpongudp.pyc -s ${CONFIP[1]} ${CONFIP[2]} $UPORT"
+	local rc=$?
+	if [ $rc -ne 0 ]; then
+		echo "Ping-pong failed."
+		exit 1
+	fi
+}
+
+wait_heartbeat() {
+	local s	
+	for i in {1..30} ; do
+		sleep 1
+		s=`cl_status hbstatus > /dev/null && cl_status rscstatus`
+		if [ "$s" == all ]; then
+			break
+		fi
+	done
+	echo $s
+}
+
+start_heartbeat() {
+	for i in 1 2; do
+		echo "Starting heartbeat on ${HOST[i]}.."
+		cexe ${cmd[i]} service heartbeat start
+		cexe ${cmd[i]} chkconfig heartbeat on
+	done
+	echo "Executing take over.."
+	
+	local s=`wait_heartbeat`
+	/usr/share/heartbeat/hb_takeover >/dev/null 2>&1
+
+	s=`wait_heartbeat`
+	if [ "$s" == all ]; then
+		echo "Adding provider.."
+		vscli add providers ${HOST[2]} >/dev/null 2>&1
+		vscli save >/dev/null 2>&1
+	else
+		echo "Takeover failed."
+		exit 1
+	fi
+}
+
+copy_config() {
+	dest[1]=""
+	dest[2]="${CONFIP[2]}:"
+	for i in 1 2; do
+		echo "Copying config files to server ${HOST[$i]}" >> $HA_LOGFILE
+		cexe scp -p ./ha.cf.${HOST[$i]} ${dest[$i]}/etc/ha.d/ha.cf
+		cexe scp -p ./haresources.${HOST[$i]} ${dest[$i]}/etc/ha.d/haresources
+	#	cexe scp -p ./drbd.conf ${dest[$i]}/etc/
+	#	cexe scp -p ./drbd_setup.${HOST[$i]} ${dest[$i]}/tmp/drbd_setup.sh
+		cexe scp -p ./authkeys ${dest[$i]}/etc/ha.d/authkeys
+	done
+	${cmd[1]} sed -i "s/role[ ]*=.*/role=master/g" /opt/vsa/files/conf/vsa.conf
+	${cmd[2]} "sed -i \"s/role[ ]*=.*/role=standby/g\" /opt/vsa/files/conf/vsa.conf"
+	#cexe scp -p $VSA_HA_NODES ${dest[$i]}/$VSA_HA_NODES
+}
+
+clean_config() {
+	echo "Cleaning config files" >> $HA_LOGFILE
+	for i in 1 2; do
+		rm -f ./ha.cf.${HOST[i]}
+		rm -f ./haresources.${HOST[i]}
+	done
+	rm -f ./authkeys
+}
+
+check_templates() {
+	[[ ! -f ${TEMPLATE_HARESOURCES} ]] && echo "ERROR: File ${TEMPLATE_HARESOURCES} not found!" && exit 1
+	[[ ! -f ${TEMPLATE_HA_CF} ]] && echo "ERROR: File ${TEMPLATE_HA_CF} not found!" && exit 1
+	#[[ ! -f ${TEMPLATE_DRBD} ]] && echo "ERROR: File ${TEMPLATE_DRBD} not found!" && exit 1
+	#[[ ! -f ${TEMPLATE_DRBD_SETUP} ]] && echo "ERROR: File ${TEMPLATE_DRBD_SETUP} not found!" && exit 1
+}
+
+create_haresources() {
+	echo "Creating haresources file" >> $HA_LOGFILE
+	for i in 1 2; do
+		cat ${TEMPLATE_HARESOURCES} | \
+		sed s/"\[HOSTNAME\]"/${HOST[1]}/g | \
+		sed s/"\[VCONFDEV\]"/$_ciface/g | \
+		sed s/"\[VCONFBROAD\]"/$_cvirbrdcst/g | \
+		sed s,"\[VCONFIP\]",$_cvir,g | \
+		sed s/"\[VDATADEV\]"/$_diface/g | \
+		sed s/"\[VDATABROAD\]"/$_dvirbrdcst/g | \
+		sed s,"\[VDATAIP\]",$_dvir,g | \
+		sed s/"\[DRBD\]"/$DRBDRES/g > haresources.${HOST[$i]}
+	done
+}
+
+create_ha_cf() {
+	echo "Creating ha.cf file" >> $HA_LOGFILE
+	for i in 1 2; do
+		cat ${TEMPLATE_HA_CF} | \
+		sed -e "s;\[IPFAIL\];$IPFAIL;g" | \
+		sed s/"\[HOSTNAME\]"/${HOST[$i]}/g | \
+		sed s/"\[PEER_HOSTNAME\]"/${HOST[$((3-i))]}/g | \
+		sed s/"\[PEER_CONFIP_ADDR\]"/${CONFIP[$((3-i))]}/g | \
+		sed s/"\[PEER_DATAIP_ADDR\]"/${DATAIP[$((3-i))]}/g | \
+		sed s/"\[CONFDEV\]"/$_ciface/g | \
+		sed s/"\[DATADEV\]"/$_diface/g | \
+		((test -n "$PINGGROUP" && sed -e "s;\[PING_GROUP\];$PINGGROUP;g" | \
+		sed s/"\#\[ipf\] "//g) || sed s/"\#\[lnf\] "//g) | \
+		sed s/"\[UPORT\]"/${UPORT}/g > ha.cf.${HOST[$i]}
+	done
+}
+
+#dis_create_drbd_conf() {
+#	echo "Creating drbd.conf file" >> $HA_LOGFILE
+#	cat ${TEMPLATE_DRBD} | \
+#	sed s/"\[HOSTNAME\]"/${HOST[1]}/g | \
+#	sed s/"\[PEER_HOSTNAME\]"/${HOST[2]}/g | \
+#	sed s/"\[IP_ADDR\]"/${IP[1]}/g | \
+#	sed s/"\[PEER_IP_ADDR\]"/${IP[2]}/g | \
+#	sed s/"\[TPORT\]"/${TPORT}/g | \
+#	sed -e "s;\[DISK\];${DISK[1]};g" | \
+#	sed -e "s;\[PEER_DISK\];${DISK[2]};g" > drbd.conf;
+#}
+
+#dis_create_drbd_setup() {
+#	echo "Creating drbd_setup file" >> $HA_LOGFILE
+#	for i in 1 2; do
+#		cat ${TEMPLATE_DRBD_SETUP} | \
+#		sed -e "s;\[VSA_MNT\];$VSA_MNT;g" | \
+#		sed -e "s;\[DISK\];${DISK[$i]};g"  > drbd_setup.${HOST[$i]}
+#		chmod +x drbd_setup.${HOST[$i]}
+#	done
+#}
+
+create_config() {
+	create_ha_cf
+	create_haresources
+	#create_drbd_conf
+	#create_drbd_setup
+}
+
+#print_info() {
+#	for i in 1 2; do
+#		echo "HOST$i:"
+#		echo "HOST=${HOST[$i]}"
+#		echo "DIST=${DIST[$i]}"
+#		echo "KERNEL=${KERNEL_NUM[$i]}"
+#		echo "IP=${IP[$i]}"
+#		echo "DEV=${DEV[$i]}"
+#		#echo "DISK=${DISK[$i]}"
+#		echo "********************"
+#	done
+#	echo "Virtual IP=$VIRTUALIP/$MASK"
+#	echo "Broadcast IP=$BROADIP"
+#	echo "********************"
+#}
+
+show_node_info() {
+	local a
+	for i in 1 2; do
+		echo "===========================================================================" >> $OUTPUT_FILE
+		if [ $i -eq 1 ]; then a="Master" ; else a="Standby" ; fi
+		echo -e "$a server (${HOST[i]}):\n\
+\tConfig IP=${CONFIP[i]} Device=${_ciface}\n\
+\tData IP=${DATAIP[i]} Device=${_diface}" >> $OUTPUT_FILE
+	done
+	echo "===========================================================================" >> $OUTPUT_FILE
+	echo -e "Virtual config IP=$_cvir Broadcast=$_cvirbrdcst" >> $OUTPUT_FILE
+	echo -e "Virtual data IP=$_dvir Broadcast=$_dvirbrdcst" >> $OUTPUT_FILE
+	if [[ -n "$PINGGROUP" ]]; then
+		echo "HA option: ipfail"
+	else
+		echo "HA option: linkfail"
+	fi
+	if [[ -n "$DRBDRESNAME" ]]; then
+		echo "DRBD resource: $DRBDRESNAME"
+	fi
+	echo "===========================================================================" >> $OUTPUT_FILE
+}
+
+find_devices_old() {
+	for i in 1 2; do
+		CONFDEV[$i]=`${cmd[$i]} ifconfig  |grep -B1 ${CONFIP[$i]} | head -1| cut -d' ' -f1`
+		CONFDEV[$i]=${CONFDEV[$i]%:*}
+		test -z "${CONFDEV[$i]}" && echo "ERROR: Cannot find config device on ${CONFIP[$i]} (${HOST[$i]})" >> $OUTPUT_FILE && exit 1
+		DATADEV[$i]=`${cmd[$i]} ifconfig  |grep -B1 ${DATAIP[$i]} | head -1| cut -d' ' -f1`
+		DATADEV[$i]=${DATADEV[$i]%:*}
+		test -z "${DATADEV[$i]}" && echo "ERROR: Cannot find data device on ${DATAIP[$i]} (${HOST[$i]})" >> $OUTPUT_FILE && exit 1
+	done
+
+	if [[ ${CONFDEV[1]} != ${CONFDEV[2]} || ${DATADEV[1]} != ${DATADEV[2]} ]]; then
+		echo "ERROR: inet devices needs to be the same on both machines"
+		exit 1
+	fi
+}
+
+#find_nodeguids() {
+#	for i in 1 2; do
+#		NODEGUID[$i]=`${cmd[$i]} ibstat | awk '/Node GUID:/{print substr($3,3)}'`
+#		NODEGUID[$i]=`echo ${NODEGUID[$i]} | tr [:blank:] ,`
+#	done
+#	echo "HA_nodes = ${NODEGUID[1]},${NODEGUID[2]}" > $VSA_HA_NODES
+#}
+
+# $1 - node number
+# $2 - iface
+get_node_iface_ip() {
+	if [ -n "$1" -a -n "$2" ]; then
+		local ip=`${cmd[$1]} ip addr show $2 | awk '/inet/ {print $2}' | head -1 | cut -d/ -f 1`
+		echo $ip
+	fi
+}
+
+parse_node() {
+	# check master is local
+	#local a=$(arp $(hostname) | awk -F'[()]' '{print $2}')
+	local a=$(arp ${NODE[1]} | awk -F'[()]' '{print $2}')
+	if [ -z "$a" ]; then
+		echo "ERROR: master is not the local machine"
+		exit 1
+	fi
+
+	cmd[1]=""
+	cmd[2]="ssh ${NODE[2]}"
+}
+
+find_ips() {
+	_ciface=${CONFIF%,*}
+	_cvir=${CONFIF#*,}
+	_diface=${DATAIF%,*}
+	_dvir=${DATAIF#*,}
+
+	if [ $_cvir == $_ciface -o $_dvir == $_diface ]; then
+		echo "Missing virtual ip for an interface" >> $OUTPUT_FILE
+		exit 1
+	fi
+
+	for i in 1 2; do
+		CONFIP[$i]=`get_node_iface_ip $i $_ciface`
+		test -z "${CONFIP[$i]}" && echo "Could not detect ip of $_ciface on NODE$i (${NODE[$i]})" >> $OUTPUT_FILE && exit 1
+		DATAIP[$i]=`get_node_iface_ip $i $_diface`
+		test -z "${DATAIP[$i]}" && echo "Could not detect ip of $_diface on NODE$i (${NODE[$i]})" >> $OUTPUT_FILE && exit 1
+	done
+}
+
+check_vips() {
+	local prf
+	for ip in $_cvir $_dvir ; do
+		# validate ip
+		ipcalc -c $ip
+		if [ $? != 0 ]; then
+			echo "ERROR: Invalid virtual ip address $ip" >> $OUTPUT_FILE
+			exit 1
+		fi
+		# check for prefix
+		prf=${ip#*/}
+		if [ -z "$prf" -o $prf == $ip ]; then
+			echo "ERROR: Missing prefix for virtual ip address $ip" >> $OUTPUT_FILE
+			exit 1
+		fi
+	done
+}
+
+parse_vips() {
+	_cvirbrdcst=`ipcalc -b $_cvir | cut -d'=' -f2`
+	_dvirbrdcst=`ipcalc -b $_dvir | cut -d'=' -f2`
+}

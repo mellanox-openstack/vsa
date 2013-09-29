@@ -1,0 +1,6 @@
+cname,eventname,id,description,textfmt,alarm,autoclear,sevirity,log,snmp,syslog,script,scriptname,webcall,weburl,email,emailacc
+SanBase,state_change,0,State Change,Object State changed from %(oldstate)s to %(newstate)s,0,0,info,1,0,0,0,,0,,0,
+VSACollection,add,0,Add child,new %(description)s named %(name)s added to %(path)s,0,0,info,1,0,0,0,,0,,0,
+VSACollection,delete,0,Delete child,%(description)s named %(name)s was deleted from %(path)s,0,0,info,1,0,0,0,,0,,0,
+SanBase,error,0,Error,"Object in error state : %(newstate)s , %(errstr)s",1,0,major,1,0,0,0,,0,,0,
+Netif,state_change,0,Interface State Change,Interface State changed from %(oldstate)s to %(newstate)s,1,0,info,1,0,0,0,,0,,0,

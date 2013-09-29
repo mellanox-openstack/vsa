@@ -1,0 +1,19 @@
+.ui-button-text-icon-primary .ui-button-text, .ui-button-text-icons .ui-button-text {
+	margin-left: 10px;
+}
+
+.ui-tabs .ui-tabs-nav {
+    margin: 0px 0 0px 0;
+    padding: 0 0 1px 0;
+}
+
+.ui-tabs .ui-tabs-nav li.ui-tabs-selected {
+    margin-bottom: 0;
+    padding-bottom: 2px;
+}
+
+.ui-tabs .ui-tabs-nav li a {
+    float: left;
+    padding: .1em 1em;
+    text-decoration: none;
+}
