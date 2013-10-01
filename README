@@ -1,8 +1,8 @@
-                         Mellanox Storage Accelerator (VSA)
+                         Virtual Storage Array (VSA)
                         ===================================
 
                    Quick Installation Guide and Product Overview
-                                  Version 2.1.0
+                                  Version 2.5.0
                                   August 18th, 2011
 
 ===============================================================================
@@ -12,7 +12,7 @@ Table of Contents
    1.1 VSA Product Introduction
    1.2 Contents
    1.3 Supported Platforms and Hardware
-   1.4 New Features in VSA Version 2.1
+   1.4 New Features in VSA Version 2.5
 2. Installation
    2.1 Installing and Running VSA
    2.2 Uninstalling VSA
@@ -35,7 +35,7 @@ Table of Contents
 1.1 VSA Product Introduction
 ----------------------------
 
-Mellanox Storage Accelerator (VSA) is a software package to enable high-speed
+Virtual Storage Array (VSA) is a software package to enable high-speed
 remote block storage access. InfiniBand (IB) and Ethernet-based initiators 
 (clients) can access storage in a VSA-based appliance, or in storage area 
 networks (SAN) connected to VSA, through high speed iSCSI and iSCSI-RDMA (iSER) 
@@ -54,7 +54,7 @@ The default password for vsadmin and vsuser is "123456".
 
 You can manage multiple VSA-enabled devices from a single console using VSCLI. 
 
-For more information on VSA, contact your Mellanox representative. 
+For more information on VSA, contact: Openstack@mellanox.com
 
 
 1.2 Contents
@@ -123,19 +123,27 @@ Supported Disks for target:
 - FC Attached storage, e.g Qlogic 4/8Gb FC Adapters (with NPIV support)
 
 
-1.4 New Features in VSA Version 2.1
+1.4 New Features in VSA Version 2.5
 ------------------------------------------
 
 The following new features are provided in this release:
 
-1.4.1 Support for RoCE-based solution
-1.4.2 Replicated cache for caching in FC gateway deployment
-1.4.3 Support for newer RHEL distributions
-1.4.4 Support for more RAID types
-1.4.5 Support for spare devices for RAIDs
-1.4.6 Support for RAID recovery (not for DR RAIDs)
-1.4.7 Support for striping in pools
-1.4.8 Support for extending and reducing logical volume size
+1.4.1  Support for RoCE-based solution
+1.4.2  Replicated cache for caching in FC gateway deployment
+1.4.3  Support for newer RHEL distributions
+1.4.4  Support for more RAID types
+1.4.5  Support for spare devices for RAIDs
+1.4.6  Support for RAID recovery (not for DR RAIDs)
+1.4.7  Support for striping in pools
+1.4.8  Support for extending and reducing logical volume size
+1.4.9  Changed to Apache 2 license
+1.4.10 Support to drbd 8.4.3
+1.4.11 Updated gui theme
+1.4.12 Support for upstream tgtd
+1.4.13 GUI fixes for IE
+1.4.14 Fixes for sles11
+1.4.15 Support for Micrson SSDs P320
+1.4.16 Various crash fixes
 
 1.4.1 Support for RoCE-based solution
 
@@ -502,7 +510,7 @@ To monitor network interfaces eth0..n with sum and average
 3.3 VSCLI managed objects  
 -------------------------
 
-Mellanox storage accelerator (VSA) is an object-oriented system.
+Virtual Storage Array (VSA) is an object-oriented system.
 Objects are organized in a hierarchy according to object type or class.
 For help on a specific object class, type: help <object-class>.
 

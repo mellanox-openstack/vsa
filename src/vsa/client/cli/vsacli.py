@@ -34,7 +34,7 @@ PRODUCT_NAME = 'VSA'
 PRODUCT_VERSION = '2.1'
 
 IntroString = "\n\
-Welcome to Mellanox Storage Accelerator console!, Ver %s\n\
+Welcome to Virtual Storage Array console!, Ver %s\n\
 Type: help or help <command> for more details\n\
 Type: help quick for quick step by step configuration guide\n" % PRODUCT_VERSION
 

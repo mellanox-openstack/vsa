@@ -44,7 +44,7 @@ pagesdir=portaldir+'pages/'
 
 portal_vars = {
     'static':    staticDataLocation,
-    'title':    'Mellanox Storage Accelerator (VSA)'
+    'title':    'Virtual Storage Array (VSA)'
 }
 
 def page(fl, user=None):
@@ -55,7 +55,7 @@ def page(fl, user=None):
     re_css=re.compile("\s*@css:(.+\.css)")
     str_js='<script src="%s/js/%%s" type="text/javascript"></script>' % staticDataLocation
     str_css=r'<link href="%s/css/\1" rel="stylesheet" type="text/css" />' % staticDataLocation
-    str_title='Mellanox Storage Accelerator (VSA)'
+    str_title='Virtual Storage Array (VSA)'
     # if main.js exists include src js files else use default
     vsa_js=''
     if os.path.isfile(portaldir+'js/main.js'):

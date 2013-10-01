@@ -1,5 +1,5 @@
 $$
-Mellanox Storage Accelerator (VSA) Command Line Help
+Virtual Storage Array (VSA) Command Line Help
 
 General syntax:  command <object/path> <parameters> <options>
 Parameters and options depend on the command and object type.
@@ -177,7 +177,7 @@ To monitor network interfaces eth0..n with sum and average:
 	monitor ifc eth* -grsa
 
 $$objects
-Mellanox storage accelerator (VSA) is an object-oriented system.
+Virtual Storage Array (VSA) is an object-oriented system.
 Objects are organized in a hierarchy according to object type or class.
 For help on a specific object class, type: help <object-class>.
 

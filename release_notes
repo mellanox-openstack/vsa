@@ -1,0 +1,9 @@
+These release notes pertain to Virtual Storage Array (VSA), version 2.5
+-          Changed to Apache 2 license
+-          Support to drbd 8.4.3
+-          Updated gui theme
+-          Support for upstream tgtd
+-          GUI fixes for IE
+-          Fixes for sles11
+-          Support for Micrson SSDs P320
+-          Various crash fixes

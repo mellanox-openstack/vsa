@@ -31,7 +31,7 @@
 Name:           %{name}
 Version:        %{version}
 Release:        %{rel}%{?dist}
-Summary:	Mellanox Storage Accelerator
+Summary:	Virtual Storage Array
 Vendor:		Mellanox Technologies
 Packager:	Roi Dayan <roid@mellanox.com>
 Group:		Storage
@@ -51,7 +51,7 @@ Requires:	pysnmp-se, python-twistedsnmp, python-twisted-conch, python-twisted-we
 Requires:	python-enum, python-IPy, python-crypto
 
 %description
-Mellanox Storage Accelerator
+Virtual Storage Array
 
 %package ha
 Group:          Storage
