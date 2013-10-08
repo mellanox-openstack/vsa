@@ -3,18 +3,28 @@ VSA - Virtual Storage Array
 
 Overview:
 ---------
-Virtual Storage Array (VSA) is a software package to enable high-speed remote block
-storage access. InfiniBand (IB) and 10/40 Gb Ethernet-based initiators (clients), can access
-storage in a VSA-based appliance or in storage area networks (SAN) connected to VSA,
-through high speed iSCSI and iSCSI-RDMA (iSER) block storage protocols.
+Virtual Storage Array (VSA) is a software package which enable a scale-out, highly available, and high-performance SCSI/Block storage system.
+
+It support iSCSI or iSCSI-RDMA (iSER) block storage protocols, and works over 10/40GbE and InfiniBand networks.
+
+VSA can drive millions of IOPs per storage server, and scale bandwidth and IOPs linearly as users add more storage servers.
+VSA comes with cluster wide CLI and Web based user interface.
 
 Installation:
 -------------
-VSA binary RPMs are located at the RPMS folder.
-other external packages that are needed for dependencies, HA, DRBD, etc
+VSA binary RPMs are located at the RPMS folder, to install just run:
+# rpm -ivh vsa-git-*.rpm
+
+Other external packages that are needed for dependencies, HA, DRBD, etc
 can be found at the external_packages folder.
 
-For further information see the README and release_notes files.
+In order to build a version from source, just run:
+# make rpm
+
+Usage:
+------
+For further information on how to use vsa and for commands references
+see the README and release_notes files.
 
 Contact Info:
 -------------
