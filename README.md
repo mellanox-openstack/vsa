@@ -13,13 +13,13 @@ VSA comes with cluster wide CLI and Web based user interface.
 Installation:
 -------------
 VSA binary RPMs are located at the RPMS folder, to install just run:
-# rpm -ivh vsa-git-*.rpm
+$ rpm -ivh vsa-git-*.rpm
 
 Other external packages that are needed for dependencies, HA, DRBD, etc
 can be found at the external_packages folder.
 
 In order to build a version from source, just run:
-# make rpm
+$ make rpm
 
 Usage:
 ------
